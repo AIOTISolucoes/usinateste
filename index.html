@@ -3,56 +3,278 @@
 <head>
   <meta charset="UTF-8" />
   <title>Login • AIOTI</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <!-- CSS do login (vamos criar já já) -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <link rel="stylesheet" href="css/login.css" />
 </head>
 
 <body class="login-page">
 
+  <!-- Animated background canvas -->
+  <canvas id="bgCanvas"></canvas>
+
+  <!-- Overlays -->
+  <div class="grid-overlay"></div>
+  <div class="scanline"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+
   <div class="login-container">
-
     <div class="login-card">
-      <h1 class="login-title">AIOTI</h1>
-      <p class="login-subtitle">Acesso ao sistema</p>
 
+      <!-- Corner accent -->
+      <div class="corner-br"></div>
+
+      <!-- ── LOGO ── -->
+      <div class="logo-area">
+
+        <!-- SVG AIOTI Triangle Logo (animated) -->
+        <svg class="logo-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="triGrad" x1="50" y1="10" x2="50" y2="90" gradientUnits="userSpaceOnUse">
+              <stop offset="0%"   stop-color="#3dffb0"/>
+              <stop offset="100%" stop-color="#0e8f55"/>
+            </linearGradient>
+            <linearGradient id="triGrad2" x1="20" y1="90" x2="80" y2="90" gradientUnits="userSpaceOnUse">
+              <stop offset="0%"   stop-color="#1cc97a"/>
+              <stop offset="100%" stop-color="#3dffb0"/>
+            </linearGradient>
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="2.5" result="blur"/>
+              <feMerge>
+                <feMergeNode in="blur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+            <filter id="glowStrong">
+              <feGaussianBlur stdDeviation="4" result="blur"/>
+              <feMerge>
+                <feMergeNode in="blur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+
+          <!-- Outer triangle outline -->
+          <polygon
+            points="50,8 92,82 8,82"
+            stroke="url(#triGrad)"
+            stroke-width="4"
+            fill="none"
+            filter="url(#glow)"
+            stroke-linejoin="round"
+          >
+            <animate attributeName="stroke-dasharray"
+              from="0 300" to="300 0"
+              dur="1.2s" begin="0.1s"
+              fill="freeze" calcMode="spline"
+              keySplines="0.4 0 0.2 1"/>
+            <animate attributeName="opacity"
+              values="0.7;1;0.7" dur="3s"
+              begin="1.3s" repeatCount="indefinite"/>
+          </polygon>
+
+          <!-- Inner triangle (inverted notch) -->
+          <polygon
+            points="50,30 68,65 32,65"
+            fill="none"
+            stroke="url(#triGrad2)"
+            stroke-width="3"
+            stroke-linejoin="round"
+            filter="url(#glow)"
+          >
+            <animate attributeName="stroke-dasharray"
+              from="0 200" to="200 0"
+              dur="0.9s" begin="0.7s"
+              fill="freeze" calcMode="spline"
+              keySplines="0.4 0 0.2 1"/>
+          </polygon>
+
+          <!-- Center dot pulse -->
+          <circle cx="50" cy="50" r="3.5" fill="#3dffb0" filter="url(#glowStrong)" opacity="0">
+            <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.4s" fill="freeze"/>
+            <animate attributeName="r" values="3.5;5;3.5" dur="2s" begin="1.7s" repeatCount="indefinite"/>
+          </circle>
+
+          <!-- Bottom base line glow -->
+          <line x1="8" y1="82" x2="92" y2="82"
+            stroke="url(#triGrad2)" stroke-width="2.5"
+            stroke-linecap="round"
+            filter="url(#glow)"
+            opacity="0"
+          >
+            <animate attributeName="opacity" values="0;0.8" dur="0.4s" begin="1s" fill="freeze"/>
+            <animate attributeName="opacity" values="0.8;0.4;0.8" dur="2.5s" begin="1.5s" repeatCount="indefinite"/>
+          </line>
+
+          <!-- Vertex dots -->
+          <circle cx="50" cy="8" r="2.5" fill="#3dffb0" opacity="0">
+            <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.2s" fill="freeze"/>
+          </circle>
+          <circle cx="92" cy="82" r="2.5" fill="#1cc97a" opacity="0">
+            <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.25s" fill="freeze"/>
+          </circle>
+          <circle cx="8" cy="82" r="2.5" fill="#1cc97a" opacity="0">
+            <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.3s" fill="freeze"/>
+          </circle>
+        </svg>
+
+        <!-- Name -->
+        <div class="logo-name">
+          <span class="highlight">A</span>IOTI
+        </div>
+      </div>
+
+      <p class="login-subtitle">Soluções Industriais · IoT</p>
+      <div class="divider"></div>
+
+      <!-- ── FORM ── -->
       <form id="loginForm">
+
         <div class="form-group">
           <label for="username">Usuário</label>
-          <input
-            type="text"
-            id="username"
-            name="username"
-            placeholder="Digite seu usuário"
-            required
-          />
+          <div class="input-wrapper">
+            <input
+              type="text"
+              id="username"
+              name="username"
+              placeholder="Digite seu usuário"
+              autocomplete="username"
+              required
+            />
+            <!-- Icon: user -->
+            <svg class="input-icon" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M10 10a4 4 0 100-8 4 4 0 000 8zm-7 8a7 7 0 1114 0H3z"/>
+            </svg>
+          </div>
         </div>
 
         <div class="form-group">
           <label for="password">Senha</label>
-          <input
-            type="password"
-            id="password"
-            name="password"
-            placeholder="Digite sua senha"
-            required
-          />
+          <div class="input-wrapper">
+            <input
+              type="password"
+              id="password"
+              name="password"
+              placeholder="Digite sua senha"
+              autocomplete="current-password"
+              required
+            />
+            <!-- Icon: lock -->
+            <svg class="input-icon" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 2a4 4 0 00-4 4v2H5a2 2 0 00-2 2v7a2 2 0 002 2h10a2 2 0 002-2V10a2 2 0 00-2-2h-1V6a4 4 0 00-4-4zm2 6V6a2 2 0 10-4 0v2h4zm-1 4a1 1 0 10-2 0v2a1 1 0 102 0v-2z" clip-rule="evenodd"/>
+            </svg>
+          </div>
         </div>
 
-        <button type="submit" class="login-btn">
-          Entrar
-        </button>
+        <button type="submit" class="login-btn">Entrar</button>
 
         <div id="loginError" class="login-error" style="display:none;">
           Usuário ou senha inválidos
         </div>
-      </form>
-    </div>
 
+      </form>
+
+      <div class="card-footer">AIOTI · Sistema Industrial · v2.0</div>
+    </div>
   </div>
 
-  <!-- JS do login -->
   <script src="js/login.js"></script>
+
+  <!-- Background particle animation -->
+  <script>
+    const canvas = document.getElementById('bgCanvas');
+    const ctx = canvas.getContext('2d');
+    let W, H, particles = [];
+
+    function resize() {
+      W = canvas.width  = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', () => { resize(); initParticles(); });
+    resize();
+
+    function initParticles() {
+      particles = [];
+      const count = Math.min(Math.floor((W * H) / 14000), 80);
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: Math.random() * W,
+          y: Math.random() * H,
+          vx: (Math.random() - 0.5) * 0.25,
+          vy: -0.1 - Math.random() * 0.3,
+          size: 0.5 + Math.random() * 1.5,
+          alpha: 0.1 + Math.random() * 0.5,
+          color: Math.random() > 0.6 ? '#3dffb0' : '#1cc97a',
+          pulse: Math.random() * Math.PI * 2,
+          pulseSpeed: 0.01 + Math.random() * 0.015,
+        });
+      }
+    }
+    initParticles();
+
+    // Connection lines between nearby particles
+    function drawConnections() {
+      const maxDist = 130;
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist < maxDist) {
+            const alpha = (1 - dist/maxDist) * 0.12;
+            ctx.beginPath();
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.strokeStyle = `rgba(29,185,100,${alpha})`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    function animate() {
+      ctx.clearRect(0, 0, W, H);
+
+      drawConnections();
+
+      particles.forEach(p => {
+        p.pulse += p.pulseSpeed;
+        const alphaMod = p.alpha * (0.6 + 0.4 * Math.sin(p.pulse));
+
+        // Glow
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 4);
+        grad.addColorStop(0, p.color.replace(')', `,${alphaMod * 0.5})`).replace('rgb', 'rgba').replace('#3dffb0', `rgba(61,255,176,${alphaMod*0.4})`).replace('#1cc97a', `rgba(28,201,122,${alphaMod*0.4})`));
+        grad.addColorStop(1, 'transparent');
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * 4, 0, Math.PI * 2);
+        ctx.fillStyle = p.color === '#3dffb0'
+          ? `rgba(61,255,176,${alphaMod * 0.08})`
+          : `rgba(28,201,122,${alphaMod * 0.08})`;
+        ctx.fill();
+
+        // Core dot
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = p.color === '#3dffb0'
+          ? `rgba(61,255,176,${alphaMod})`
+          : `rgba(28,201,122,${alphaMod})`;
+        ctx.fill();
+
+        p.x += p.vx;
+        p.y += p.vy;
+
+        if (p.y < -10) { p.y = H + 10; p.x = Math.random() * W; }
+        if (p.x < -10) p.x = W + 10;
+        if (p.x > W + 10) p.x = -10;
+      });
+
+      requestAnimationFrame(animate);
+    }
+    animate();
+  </script>
+
 </body>
 </html>
