@@ -97,7 +97,8 @@ let DATASTUDIO_STATE = {
   aggregationType: "avg", // avg | integral | median | max | mode | propagation | sum | none
   consolidationPeriod: "5min", // 5min | daily | weekly | monthly | yearly | hdaily etc
 
-  chartData: null
+  chartData: null,
+  forceHeroState: false
 };
 
 let DATASTUDIO_CHART = null;
@@ -1269,6 +1270,7 @@ function getDataStudioUIElements() {
     endDateInput: document.getElementById("dsEndDateInput"),
     plantSelect: document.getElementById("dsPlantSelect"),
     openTagsBtn: document.getElementById("dsOpenTagsBtn"),
+    backToHeroBtn: document.getElementById("dsBackToHeroBtn"),
 
     modal: document.getElementById("dsTagsModal"),
     modalCloseBtn: document.getElementById("dsModalCloseBtn"),
@@ -1281,6 +1283,7 @@ function getDataStudioUIElements() {
     tagsClearBtn: document.getElementById("dsTagsClearBtn"),
     tagsTableBody: document.getElementById("dsTagsTbody"),
     selectedCount: document.getElementById("dsSelectedCount"),
+    selectedTagsList: document.getElementById("dsSelectedTagsList"),
     emptyState: document.getElementById("dsEmptyState"),
     workspace: document.getElementById("dsWorkspace"),
 
@@ -1296,42 +1299,116 @@ function getDataStudioUIElements() {
 }
 
 
+function selectedTagKey(tagOrPath) {
+  if (typeof tagOrPath === "string") return `path:${dsSafeTrim(tagOrPath)}`;
+  const id = tagOrPath?.id ?? tagOrPath?.tag_id;
+  if (id !== undefined && id !== null && String(id) !== "") return `id:${id}`;
+  return `path:${dsSafeTrim(tagOrPath?.pathname)}`;
+}
+
+function renderSelectedTagsList() {
+  const { selectedTagsList } = getDataStudioUIElements();
+  if (!selectedTagsList) return;
+
+  selectedTagsList.innerHTML = "";
+  const tags = Array.isArray(DATASTUDIO_STATE.selectedTags) ? DATASTUDIO_STATE.selectedTags : [];
+
+  if (!tags.length) {
+    selectedTagsList.classList.add("hidden");
+    return;
+  }
+
+  selectedTagsList.classList.remove("hidden");
+  tags.forEach((tag) => {
+    const chip = document.createElement("div");
+    chip.className = "ds-selected-tag-chip";
+
+    const label = `${valueOrDash(tag?.context)} • ${valueOrDash(tag?.point_name || tag?.description || tag?.pathname)}`;
+    chip.innerHTML = `
+      <span class="ds-selected-tag-chip__text">${label}</span>
+      <button type="button" class="ds-selected-tag-chip__remove" aria-label="Remover medida">×</button>
+    `;
+
+    chip.querySelector(".ds-selected-tag-chip__remove")?.addEventListener("click", () => {
+      removeSelectedTag(tag);
+      renderDataStudioTagsTable(DATASTUDIO_STATE.availableTags);
+      updateSelectedTagsCounter();
+    });
+
+    selectedTagsList.appendChild(chip);
+  });
+}
+
+function populateDataStudioContextSelect(tags) {
+  const { contextSelect } = getDataStudioUIElements();
+  if (!contextSelect) return;
+
+  const prev = dsSafeTrim(contextSelect.value || DATASTUDIO_STATE.selectedContext) || "all";
+  const contexts = Array.from(new Set((Array.isArray(tags) ? tags : [])
+    .map((t) => dsSafeTrim(t?.context))
+    .filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  contextSelect.innerHTML = "";
+  const allOpt = document.createElement("option");
+  allOpt.value = "all";
+  allOpt.textContent = "Todos contextos";
+  contextSelect.appendChild(allOpt);
+
+  contexts.forEach((ctx) => {
+    const opt = document.createElement("option");
+    opt.value = ctx;
+    opt.textContent = ctx;
+    contextSelect.appendChild(opt);
+  });
+
+  if (contexts.includes(prev)) contextSelect.value = prev;
+  else contextSelect.value = "all";
+
+  DATASTUDIO_STATE.selectedContext = contextSelect.value || "all";
+}
+
+
 function updateDataStudioStageUI() {
   const { emptyState, workspace } = getDataStudioUIElements();
   if (!emptyState || !workspace) return;
 
   const hasSelection = Array.isArray(DATASTUDIO_STATE.selectedTags) && DATASTUDIO_STATE.selectedTags.length > 0;
-  if (hasSelection) {
+  const showWorkspace = hasSelection && !DATASTUDIO_STATE.forceHeroState;
+
+  if (showWorkspace) {
     emptyState.classList.add("hidden");
     workspace.classList.remove("hidden");
   } else {
     emptyState.classList.remove("hidden");
     workspace.classList.add("hidden");
   }
+
+  renderSelectedTagsList();
 }
 
-function isTagSelected(pathname) {
-  const key = dsSafeTrim(pathname);
-  if (!key) return false;
-  return DATASTUDIO_STATE.selectedTags.some((t) => dsSafeTrim(t?.pathname) === key);
+function isTagSelected(tagOrPath) {
+  const key = selectedTagKey(tagOrPath);
+  if (!key || key.endsWith(":")) return false;
+  return DATASTUDIO_STATE.selectedTags.some((t) => selectedTagKey(t) === key);
 }
 
 function addSelectedTag(tag) {
   if (!tag || !dsSafeTrim(tag.pathname)) return false;
-  if (isTagSelected(tag.pathname)) return true;
+  if (isTagSelected(tag)) return true;
   if (DATASTUDIO_STATE.selectedTags.length >= 50) {
     window.alert("Você pode selecionar no máximo 50 medidas.");
     return false;
   }
   DATASTUDIO_STATE.selectedTags.push(tag);
+  DATASTUDIO_STATE.forceHeroState = false;
   updateDataStudioStageUI();
   return true;
 }
 
-function removeSelectedTag(pathname) {
-  const key = dsSafeTrim(pathname);
+function removeSelectedTag(tagOrPath) {
+  const key = selectedTagKey(tagOrPath);
   DATASTUDIO_STATE.selectedTags = DATASTUDIO_STATE.selectedTags.filter(
-    (t) => dsSafeTrim(t?.pathname) !== key
+    (t) => selectedTagKey(t) !== key
   );
   updateDataStudioStageUI();
 }
@@ -1364,7 +1441,7 @@ function renderDataStudioTagsTable(tags) {
     if (!pathname) return;
 
     const tr = document.createElement("tr");
-    const checked = isTagSelected(pathname) ? "checked" : "";
+    const checked = isTagSelected(tag) ? "checked" : "";
     tr.innerHTML = `
       <td><input type="checkbox" data-ds-pathname="${pathname.replaceAll('"', '&quot;')}" ${checked}></td>
       <td>${valueOrDash(pathname)}</td>
@@ -1373,23 +1450,29 @@ function renderDataStudioTagsTable(tags) {
       <td>${valueOrDash(tag?.data_kind)}</td>
       <td>${valueOrDash(tag?.unit)}</td>
       <td>${valueOrDash(tag?.context)}</td>
-      <td>${valueOrDash(tag?.power_plant_name || tag?.plant_name || tag?.smp_name)}</td>
+      <td>${valueOrDash(tag?.power_plant_id)}</td>
     `;
 
     const checkbox = tr.querySelector("input[type='checkbox']");
     checkbox?.addEventListener("change", (ev) => {
       if (ev.target.checked) {
         const ok = addSelectedTag({
+          id: tag?.id ?? null,
+          tag_id: tag?.id ?? null,
+          device_type: tag?.device_type ?? null,
+          device_id: tag?.device_id ?? null,
+          point_name: tag?.point_name ?? null,
+          power_plant_id: tag?.power_plant_id ?? null,
+          context: dsSafeTrim(tag?.context) || "PLANT",
           pathname,
           source: dsSafeTrim(tag?.source) || "historico",
           data_kind: dsSafeTrim(tag?.data_kind) || "analog",
-          context: dsSafeTrim(tag?.context) || "PLANT",
           unit: tag?.unit ?? null,
           description: tag?.description ?? null
         });
         if (!ok) ev.target.checked = false;
       } else {
-        removeSelectedTag(pathname);
+        removeSelectedTag(tag);
       }
       updateSelectedTagsCounter();
     });
@@ -1472,13 +1555,15 @@ function buildDataStudioSelectionPayload() {
     ? DATASTUDIO_STATE.consolidationPeriod
     : "5min";
 
-  const items = DATASTUDIO_STATE.selectedTags.slice(0, 50).map((t) => ({
+  const items = DATASTUDIO_STATE.selectedTags.slice(0, 50).map((t, idx) => ({
+    tag_id: t?.id ?? t?.tag_id ?? null,
     pathname: dsSafeTrim(t.pathname),
+    display_type: "line",
+    series_order: idx + 1,
     source: dsSafeTrim(t.source) || "historico",
     data_kind: dsSafeTrim(t.data_kind) || "analog",
-    context: dsSafeTrim(t.context) || "PLANT",
     unit: t.unit ?? null,
-    description: t.description ?? null
+    label: dsSafeTrim(t.point_name || t.description || t.pathname) || null
   }));
 
   return {
@@ -1507,6 +1592,8 @@ function openDataStudioTagsModal() {
     return;
   }
 
+  DATASTUDIO_STATE.forceHeroState = false;
+  updateDataStudioStageUI();
   modal.classList.remove("hidden");
   fetchDataStudioTags();
 }
@@ -1555,6 +1642,7 @@ async function fetchDataStudioTags() {
     else if (Array.isArray(parsed?.data)) tags = parsed.data;
 
     DATASTUDIO_STATE.availableTags = tags;
+    populateDataStudioContextSelect(tags);
     renderDataStudioTagsTable(tags);
   } catch (err) {
     console.error("[DataStudio] erro ao buscar tags:", err);
@@ -1585,8 +1673,13 @@ async function saveDataStudioSelection() {
 
     const selectionId = parsed?.selection_id ?? parsed?.id ?? parsed?.selectionId ?? null;
     DATASTUDIO_STATE.selectionId = selectionId;
+    DATASTUDIO_STATE.forceHeroState = false;
     updateDataStudioStageUI();
     window.alert(selectionId ? `Seleção salva! ID ${selectionId}` : "Seleção salva com sucesso.");
+
+    if (selectionId) {
+      await fetchDataStudioSeriesBySelection();
+    }
   } catch (err) {
     console.error("[DataStudio] erro ao salvar seleção:", err);
     window.alert(`Não foi possível salvar a seleção: ${err.message || err}`);
@@ -1698,9 +1791,12 @@ function populateDataStudioPlantSelect(plants) {
   if (!plantSelect) return;
 
   const list = Array.isArray(plants) ? plants : [];
-  const previous = dsSafeTrim(plantSelect.value || DATASTUDIO_STATE.selectedPlantId || CURRENT_PLANT_ID);
+  const previous =
+    dsSafeTrim(DATASTUDIO_STATE.selectedPlantId) ||
+    dsSafeTrim(CURRENT_PLANT_ID);
 
   plantSelect.innerHTML = "";
+
   const placeholder = document.createElement("option");
   placeholder.value = "";
   placeholder.textContent = "Selecione uma usina";
@@ -1708,19 +1804,30 @@ function populateDataStudioPlantSelect(plants) {
 
   list.forEach((p) => {
     const id = p.power_plant_id ?? p.plant_id ?? p.id;
+    const name = p.power_plant_name ?? p.name ?? `Usina ${id}`;
     if (id == null) return;
+
     const option = document.createElement("option");
     option.value = String(id);
-    option.textContent = valueOrDash(p.power_plant_name || p.name || `Usina ${id}`);
-    if (String(id) === String(previous)) option.selected = true;
+    option.textContent = String(name);
+
+    if (previous && String(id) === String(previous)) {
+      option.selected = true;
+    }
+
     plantSelect.appendChild(option);
   });
 
-  if (!plantSelect.value && CURRENT_PLANT_ID != null) {
-    plantSelect.value = String(CURRENT_PLANT_ID);
+  if (!plantSelect.value) {
+    plantSelect.value = "";
   }
 
   DATASTUDIO_STATE.selectedPlantId = dsSafeTrim(plantSelect.value) || null;
+
+  console.log("[DS] plant options:", [...plantSelect.options].map(o => ({
+    value: o.value,
+    text: o.textContent
+  })));
 }
 
 function syncDataStudioAggregationUI() {
@@ -1804,12 +1911,17 @@ function wireDataStudioOnce() {
     DATASTUDIO_STATE.selectedTags = [];
     DATASTUDIO_STATE.selectionId = null;
     DATASTUDIO_STATE.chartData = null;
+    DATASTUDIO_STATE.forceHeroState = false;
     renderDataStudioTagsTable(DATASTUDIO_STATE.availableTags);
     updateDataStudioStageUI();
   });
 
   ui.saveSelectionBtn?.addEventListener("click", saveDataStudioSelection);
   ui.loadSeriesBtn?.addEventListener("click", fetchDataStudioSeriesBySelection);
+  ui.backToHeroBtn?.addEventListener("click", () => {
+    DATASTUDIO_STATE.forceHeroState = true;
+    updateDataStudioStageUI();
+  });
 
   ui.modal?.addEventListener("click", (e) => {
     if (e.target === ui.modal) closeDataStudioTagsModal();
@@ -1922,67 +2034,60 @@ async function refreshVisibleViewData() {
 
 
 async function refreshDashboard() {
+  let plants = [];
+  let alarms = [];
+
   try {
-    const [plants, alarms] = await Promise.all([
-      fetchPlants(),
-      fetchActiveAlarms()
-    ]);
-    if (Array.isArray(plants) && plants.length > 0) lastValidPlants = plants;
-    populateDataStudioPlantSelect(lastValidPlants);
-
-    lastAlarmSeverityByPlant = buildPlantAlarmSeverityMap(alarms);
-
-    if (CURRENT_PLANT_ID == null) {
-      CURRENT_PLANT_ID = loadSelectedPlantId();
+    plants = await fetchPlants();
+    if (Array.isArray(plants) && plants.length > 0) {
+      lastValidPlants = plants;
     }
-
-    if (CURRENT_PLANT_ID == null && lastValidPlants.length) {
-      CURRENT_PLANT_ID = lastValidPlants[0].power_plant_id ?? lastValidPlants[0].plant_id ?? lastValidPlants[0].id;
-      saveSelectedPlantId(CURRENT_PLANT_ID);
-    }
-
-    // ✅ chips globais via endpoint (fonte da verdade)
-    try {
-      const summary = await fetchPlantsSummary();
-      refreshTopChipsGlobalFromSummary(summary);
-    } catch (e) {
-      console.warn("[SUMMARY] falhou, fallback via /plants:", e?.message || e);
-      refreshTopChipsGlobalFromPlants(lastValidPlants);
-    }
-
-    const selected = lastValidPlants.find(
-      p => (p.power_plant_id ?? p.plant_id ?? p.id) === CURRENT_PLANT_ID
-    );
-    if (selected) updateSummaryUI([selected]);
-    else updateSummaryUI(lastValidPlants);
-
-    renderPortfolioTable(lastValidPlants);
-    await refreshVisibleViewData();
   } catch (err) {
-    console.error("Erro ao atualizar dashboard:", err);
-
-    try {
-      const summary = await fetchPlantsSummary();
-      refreshTopChipsGlobalFromSummary(summary);
-    } catch (e) {
-      console.warn("[SUMMARY] falhou, fallback via /plants:", e?.message || e);
-      refreshTopChipsGlobalFromPlants(lastValidPlants);
-    }
-
-    const selected = lastValidPlants.find(
-      p => (p.power_plant_id ?? p.plant_id ?? p.id) === CURRENT_PLANT_ID
-    );
-    if (selected) updateSummaryUI([selected]);
-    else updateSummaryUI(lastValidPlants);
-
-    renderPortfolioTable(lastValidPlants);
-    await refreshVisibleViewData();
+    console.error("Erro ao buscar plantas:", err);
+    plants = lastValidPlants;
   }
+
+  populateDataStudioPlantSelect(lastValidPlants);
+
+  try {
+    alarms = await fetchActiveAlarms();
+  } catch (err) {
+    console.error("Erro ao buscar alarmes ativos:", err);
+    alarms = [];
+  }
+
+  lastAlarmSeverityByPlant = buildPlantAlarmSeverityMap(alarms);
+
+  if (CURRENT_PLANT_ID == null) {
+    CURRENT_PLANT_ID = loadSelectedPlantId();
+  }
+
+  if (CURRENT_PLANT_ID == null && lastValidPlants.length) {
+    CURRENT_PLANT_ID = lastValidPlants[0].power_plant_id ?? lastValidPlants[0].plant_id ?? lastValidPlants[0].id;
+    saveSelectedPlantId(CURRENT_PLANT_ID);
+  }
+
+  try {
+    const summary = await fetchPlantsSummary();
+    refreshTopChipsGlobalFromSummary(summary);
+  } catch (e) {
+    console.warn("[SUMMARY] falhou, fallback via /plants:", e?.message || e);
+    refreshTopChipsGlobalFromPlants(lastValidPlants);
+  }
+
+  const selected = lastValidPlants.find(
+    p => (p.power_plant_id ?? p.plant_id ?? p.id) === CURRENT_PLANT_ID
+  );
+
+  if (selected) updateSummaryUI([selected]);
+  else updateSummaryUI(lastValidPlants);
+
+  renderPortfolioTable(lastValidPlants);
+  await refreshVisibleViewData();
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
   wireDataStudioOnce();
-  populateDataStudioPlantSelect(lastValidPlants);
 
   const savedView = localStorage.getItem("currentView") || "overview";
   showView(savedView);
