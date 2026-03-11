@@ -290,7 +290,7 @@
                   <input id="dsEndDateInput" type="date" />
                 </label>
                 <label class="ds-field">
-                  <span>Usina / SMP</span>
+                  <span>Usina</span>
                   <select id="dsPlantSelect"></select>
                 </label>
                 </div>
@@ -305,6 +305,8 @@
               <h3>Nenhuma medida selecionada</h3>
               <p>Clique no botão + para abrir o catálogo de medidas e montar sua seleção.</p>
             </div>
+
+            <div id="dsSelectedTagsList" class="ds-selected-tags"></div>
 
             <div id="dsWorkspace" class="ds-workspace hidden">
               <div class="ds-main-grid">
@@ -330,29 +332,29 @@
                   <label>
                     <span>Agregação</span>
                     <select id="dsAggregationSelect">
-                      <option value="avg">avg</option>
-                      <option value="integral">integral</option>
-                      <option value="median">median</option>
-                      <option value="max">max</option>
-                      <option value="mode">mode</option>
-                      <option value="propagation">propagation</option>
-                      <option value="sum">sum</option>
-                      <option value="none">none</option>
+                      <option value="avg">Média</option>
+                      <option value="integral">Integral</option>
+                      <option value="median">Mediana</option>
+                      <option value="max">Máxima</option>
+                      <option value="mode">Modo</option>
+                      <option value="propagation">Propagação</option>
+                      <option value="sum">Soma</option>
+                      <option value="none">Sem agregação</option>
                     </select>
                   </label>
 
                   <label>
                     <span>Período consolidado</span>
                     <select id="dsConsolidationSelect">
-                      <option value="5min">5min</option>
-                      <option value="daily">daily</option>
-                      <option value="weekly">weekly</option>
-                      <option value="monthly">monthly</option>
-                      <option value="yearly">yearly</option>
-                      <option value="hdaily">hdaily</option>
-                      <option value="hweekly">hweekly</option>
-                      <option value="hmonthly">hmonthly</option>
-                      <option value="hyearly">hyearly</option>
+                      <option value="5min">5 min</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="yearly">Yearly</option>
+                      <option value="hdaily">HDaily</option>
+                      <option value="hweekly">HWeekly</option>
+                      <option value="hmonthly">HMonthly</option>
+                      <option value="hyearly">HYearly</option>
                     </select>
                   </label>
                 </div>
@@ -405,12 +407,6 @@
 
                 <select id="dsContextSelect" class="ds-chip-select">
                   <option value="all">Todos contextos</option>
-                  <option value="PLANT">PLANT</option>
-                  <option value="INV_1">INV_1</option>
-                  <option value="INV_2">INV_2</option>
-                  <option value="WEATHER_1">WEATHER_1</option>
-                  <option value="RELAY_1">RELAY_1</option>
-                  <option value="METER_1">METER_1</option>
                 </select>
               </div>
 
@@ -427,7 +423,7 @@
                       <th>Tipo</th>
                       <th>Unidade</th>
                       <th>Contexto</th>
-                      <th>Usina/SMP</th>
+                      <th>Plant ID</th>
                     </tr>
                   </thead>
                   <tbody id="dsTagsTbody"></tbody>
