@@ -1754,6 +1754,39 @@ td {
   gap: 10px;
 }
 
+.ds-selected-tags {
+  margin: 10px 0 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ds-selected-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(42,255,123,.22);
+  background: rgba(8,16,13,.9);
+  font-size: 12px;
+}
+
+.ds-selected-tag-chip__text {
+  color: var(--text-main);
+}
+
+.ds-selected-tag-chip__remove {
+  border: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.12);
+  color: var(--text-main);
+  cursor: pointer;
+  line-height: 1;
+}
+
 .ds-chart-card {
   min-height: 520px;
   padding: 18px;
