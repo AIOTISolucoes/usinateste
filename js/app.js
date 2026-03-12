@@ -1555,6 +1555,14 @@ function buildDataStudioSelectionPayload() {
     ? DATASTUDIO_STATE.consolidationPeriod
     : "5min";
 
+  const invalidTag = DATASTUDIO_STATE.selectedTags.find(
+    (t) => Number(t?.power_plant_id) !== Number(filters.power_plant_id)
+  );
+
+  if (invalidTag) {
+    throw new Error("Há medidas selecionadas de outra usina. Limpe a seleção e selecione novamente.");
+  }
+
   const items = DATASTUDIO_STATE.selectedTags.slice(0, 50).map((t, idx) => ({
     tag_id: t?.id ?? t?.tag_id ?? null,
     pathname: dsSafeTrim(t.pathname),
@@ -1572,8 +1580,10 @@ function buildDataStudioSelectionPayload() {
     start_ts: filters.start_ts,
     end_ts: filters.end_ts,
     timezone: "America/Fortaleza",
-    historico_aggregation_default: aggregationType,
-    consolidado_period_default: consolidationPeriod,
+    historico_aggregation_default:
+      DATASTUDIO_STATE.aggregationMode === "historico" ? aggregationType : "avg",
+    consolidado_period_default:
+      DATASTUDIO_STATE.aggregationMode === "consolidado" ? consolidationPeriod : "5min",
     items
   };
 }
@@ -1791,34 +1801,38 @@ function populateDataStudioPlantSelect(plants) {
   if (!plantSelect) return;
 
   const list = Array.isArray(plants) ? plants : [];
-  const previous =
-    dsSafeTrim(DATASTUDIO_STATE.selectedPlantId) ||
-    dsSafeTrim(CURRENT_PLANT_ID);
+  const currentValue =
+  dsSafeTrim(plantSelect.value) ||
+  dsSafeTrim(DATASTUDIO_STATE.selectedPlantId) ||
+  "";
 
-  plantSelect.innerHTML = "";
+  const nextOptions = [
+    { value: "", text: "Selecione uma usina" },
+    ...list
+      .map((p) => {
+        const id = p.power_plant_id ?? p.plant_id ?? p.id;
+        const name = p.power_plant_name ?? p.name ?? `Usina ${id}`;
+        return id == null ? null : { value: String(id), text: String(name) };
+      })
+      .filter(Boolean)
+  ];
 
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "Selecione uma usina";
-  plantSelect.appendChild(placeholder);
+  const currentSerialized = [...plantSelect.options].map(o => `${o.value}|${o.textContent}`).join("||");
+  const nextSerialized = nextOptions.map(o => `${o.value}|${o.text}`).join("||");
 
-  list.forEach((p) => {
-    const id = p.power_plant_id ?? p.plant_id ?? p.id;
-    const name = p.power_plant_name ?? p.name ?? `Usina ${id}`;
-    if (id == null) return;
+  if (currentSerialized !== nextSerialized) {
+    plantSelect.innerHTML = "";
+    nextOptions.forEach(({ value, text }) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = text;
+      plantSelect.appendChild(option);
+    });
+  }
 
-    const option = document.createElement("option");
-    option.value = String(id);
-    option.textContent = String(name);
-
-    if (previous && String(id) === String(previous)) {
-      option.selected = true;
-    }
-
-    plantSelect.appendChild(option);
-  });
-
-  if (!plantSelect.value) {
+  if (currentValue && nextOptions.some(o => o.value === currentValue)) {
+    plantSelect.value = currentValue;
+  } else if (!plantSelect.value) {
     plantSelect.value = "";
   }
 
@@ -1871,7 +1885,31 @@ function wireDataStudioOnce() {
   });
 
   ui.plantSelect?.addEventListener("change", (e) => {
-    DATASTUDIO_STATE.selectedPlantId = dsSafeTrim(e.target.value) || null;
+    const nextPlantId = dsSafeTrim(e.target.value) || null;
+    DATASTUDIO_STATE.selectedPlantId = nextPlantId;
+
+    DATASTUDIO_STATE.selectedTags = [];
+    DATASTUDIO_STATE.availableTags = [];
+    DATASTUDIO_STATE.selectionId = null;
+    DATASTUDIO_STATE.chartData = null;
+    DATASTUDIO_STATE.selectedContext = "all";
+    DATASTUDIO_STATE.searchText = "";
+
+    if (ui.contextSelect) {
+      ui.contextSelect.innerHTML = "";
+      const opt = document.createElement("option");
+      opt.value = "all";
+      opt.textContent = "Todos contextos";
+      ui.contextSelect.appendChild(opt);
+      ui.contextSelect.value = "all";
+    }
+
+    if (ui.searchInput) ui.searchInput.value = "";
+
+    renderDataStudioTagsTable([]);
+    renderDataStudioChart(null);
+    updateSelectedTagsCounter();
+    updateDataStudioStageUI();
   });
 
   ui.dataKindSelect?.addEventListener("change", (e) => {
@@ -1986,6 +2024,8 @@ function showView(viewName) {
 
   if (viewName === "datastudio") {
     wireDataStudioOnce();
+    populateDataStudioPlantSelect(lastValidPlants);
+    syncDataStudioAggregationUI();
   }
 }
 
@@ -2047,7 +2087,17 @@ async function refreshDashboard() {
     plants = lastValidPlants;
   }
 
-  populateDataStudioPlantSelect(lastValidPlants);
+  const dsViewEl = document.getElementById("dataStudioView");
+  const dsViewVisible = dsViewEl && !dsViewEl.classList.contains("hidden");
+
+  const dsPlantSelect = document.getElementById("dsPlantSelect");
+  const dsNeedPopulate =
+    !dsPlantSelect ||
+    dsPlantSelect.options.length <= 1;
+
+  if (!dsViewVisible || dsNeedPopulate) {
+    populateDataStudioPlantSelect(lastValidPlants);
+  }
 
   try {
     alarms = await fetchActiveAlarms();
