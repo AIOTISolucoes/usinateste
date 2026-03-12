@@ -1,3 +1,24 @@
+:root {
+  --green-bright: #3dffb0;
+  --green-mid:    #1cc97a;
+  --green-deep:   #0e8f55;
+  --green-dark:   #062e1c;
+  --bg-darkest:   #030a05;
+  --bg-dark:      #050e07;
+  --bg-card:      rgba(7, 16, 9, 0.97);
+  --bg-card-alt:  rgba(0, 0, 0, 0.20);
+  --border:       rgba(42, 255, 123, 0.13);
+  --border-soft:  rgba(42, 255, 123, 0.13);
+  --border-focus: rgba(42, 255, 123, 0.38);
+  --text-primary: #cdeedd;
+  --text-main:    #cdeedd;
+  --text-muted:   #5a9975;
+  --accent-green: #2aff7b;
+  --accent-soft:  rgba(42, 255, 123, 0.07);
+  --error:        #ff4f4f;
+  --glow:         rgba(42, 255, 123, 0.15);
+}
+
 /* =============================== 
    LAYOUT BASE & SIDEBAR
 ================================ */
@@ -15,75 +36,96 @@
 html { scrollbar-gutter: stable; }
 
 .sidebar {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  z-index: 100;
-  background: var(--bg-card);
-  border-right: 1px solid var(--border-soft);
+  background: linear-gradient(180deg, #071209 0%, #050e07 100%);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 12px 0; /* 🔧 MENOR */
+  padding: 14px 0;
+  gap: 0;
+  position: relative;
+  overflow: hidden;
 }
 
-/* ✅ Logo container (funciona tanto com <img> quanto com SVG) */
+.sidebar::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0;
+  width: 1px; height: 100%;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(42, 255, 123, 0.35) 35%,
+    rgba(42, 255, 123, 0.35) 65%,
+    transparent
+  );
+  pointer-events: none;
+}
+
 .sidebar-logo {
   height: 56px;
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 24px;
-}
-
-/* fallback caso ainda use IMG */
-.sidebar-logo img {
-  width: 40px;
-  height: 40px;
-  display: block;
-  margin: 0 auto;
-  filter:
-    drop-shadow(0 0 6px rgba(42,255,123,.22))
-    drop-shadow(0 0 16px rgba(42,255,123,.12));
-  opacity: .92;
+  margin-bottom: 28px;
 }
 
 .sidebar-nav {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 8px;
+  width: 100%;
+  padding: 0 11px;
 }
 
 .sidebar-btn {
-  background: none;
-  border: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--text-muted);
-  font-size: 20px;
+  font-size: 18px;
   cursor: pointer;
-  width: 45px;
-  height: 45px;
-  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: 0.3s;
+  transition: all 0.22s ease;
+  position: relative;
 }
 
 .sidebar-btn:hover {
   color: var(--accent-green);
   background: var(--accent-soft);
-  box-shadow: 0 0 14px rgba(42, 255, 123, 0.12);
+  border-color: rgba(42, 255, 123, 0.22);
+}
+
+.sidebar-btn:hover i {
+  filter: drop-shadow(0 0 5px rgba(42, 255, 123, 0.55));
 }
 
 .sidebar-btn.active {
   color: var(--accent-green);
-  background: var(--accent-soft);
-  border: 1px solid rgba(42, 255, 123, 0.65);
-  box-shadow:
-    0 0 0 1px rgba(42, 255, 123, 0.18) inset,
-    0 0 14px rgba(42, 255, 123, 0.18);
+  background: rgba(42, 255, 123, 0.09);
+  border-color: rgba(42, 255, 123, 0.40);
+  box-shadow: 0 0 16px rgba(42, 255, 123, 0.12) inset;
+}
+
+.sidebar-btn.active i {
+  filter:
+    drop-shadow(0 0 6px rgba(42, 255, 123, 0.75))
+    drop-shadow(0 0 14px rgba(42, 255, 123, 0.35));
+}
+
+.sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 0 11px;
+  padding-bottom: 4px;
 }
 
 /* ===============================
@@ -107,262 +149,254 @@ html { scrollbar-gutter: stable; }
 
 /* topbar um pouco mais “deep” */
 .topbar {
-  height: 60px;
-  background: var(--bg-card);
-  border-bottom: 1px solid rgba(42, 255, 123, 0.14);
+  height: 54px;
+  background: rgba(7, 16, 9, 0.97);
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
   flex-shrink: 0;
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 300;
 }
 
 .plant-name {
-  font-size: 18px;
-  font-weight: 500;
+  font-family: 'Exo 2', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   color: var(--text-main);
-  text-shadow: 0 0 18px rgba(42, 255, 123, 0.08);
 }
 
-.plant-location {
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 99px;
+  background: rgba(42, 255, 123, 0.06);
+  border: 1px solid rgba(42, 255, 123, 0.22);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  box-shadow: 0 0 8px var(--accent-green), 0 0 16px rgba(42, 255, 123, 0.5);
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%, 100% { box-shadow: 0 0 6px var(--accent-green), 0 0 14px rgba(42, 255, 123, 0.4); }
+  50%       { box-shadow: 0 0 10px var(--accent-green), 0 0 22px rgba(42, 255, 123, 0.65); }
+}
+
+.user-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: rgba(42, 255, 123, 0.07);
+  border: 1px solid rgba(42, 255, 123, 0.18);
   font-size: 12px;
   color: var(--text-muted);
 }
 
+.avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(42, 255, 123, 0.10);
+  border: 1.5px solid rgba(42, 255, 123, 0.28);
+  display: grid;
+  place-items: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent-green);
+  box-shadow: 0 0 10px rgba(42, 255, 123, 0.12);
+}
+
+
 /* ===============================
    PLANT SUMMARY FIXED (TOPO)
-   - fundo mais escuro
-   - linhas verdes glow (estilo AIOTI)
-   - circle % centralizado + glow
-   ✅ AJUSTE: conteúdo centralizado via .psf-inner (fundo continua full width)
 ================================ */
 .plant-summary-fixed {
-  /* fundo full-width */
   width: 100% !important;
   box-sizing: border-box;
-
-  background: linear-gradient(
-    180deg,
-    rgba(5, 7, 10, 0.55),
-    rgba(5, 7, 10, 0.15)
-  );
-
-  border-bottom: 1px solid rgba(42, 255, 123, 0.16);
-
-  position: relative;
+  background: linear-gradient(180deg, rgba(3, 8, 5, 0.97) 0%, rgba(3, 8, 5, 0.70) 100%);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 54px;
+  z-index: 250;
+  backdrop-filter: blur(6px);
   overflow: hidden;
-
-  /* ✅ padding move pro inner */
-  padding: 0 !important;
-
-  /* ✅ mata o flex antigo e evita conflito com regras duplicadas */
   display: block !important;
+  padding: 0 !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
 }
 
-/* linha neon superior */
 .plant-summary-fixed::before {
-  content: "";
+  content: '';
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
+  left: 0; right: 0; top: 0;
   height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(42, 255, 123, 0.65),
-    transparent
-  );
-  box-shadow: 0 0 14px rgba(42, 255, 123, 0.35);
+  background: linear-gradient(90deg, transparent, rgba(42, 255, 123, 0.6) 50%, transparent);
+  animation: scanLine 4s ease-in-out infinite;
   pointer-events: none;
-  opacity: 0.95;
 }
 
-/* brilho sutil no fundo (não polui) */
+@keyframes scanLine {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 1; box-shadow: 0 0 14px rgba(42, 255, 123, 0.4); }
+}
+
 .plant-summary-fixed::after {
-  content: "";
+  content: '';
   position: absolute;
-  inset: -40px;
-  background:
-    radial-gradient(500px 220px at 12% 40%, rgba(42,255,123,.07), transparent 60%),
-    radial-gradient(420px 200px at 38% 50%, rgba(42,255,123,.04), transparent 62%),
-    radial-gradient(520px 240px at 85% 55%, rgba(42,255,123,.06), transparent 62%);
+  inset: 0;
+  background: radial-gradient(ellipse 60% 120% at 50% -20%, rgba(42, 255, 123, 0.04), transparent 65%);
   pointer-events: none;
-  filter: blur(2px);
-  opacity: 0.9;
 }
 
-.plant-summary-fixed img,
-.plant-summary-fixed svg {
-  display: block;
-}
-
-/* ✅ wrapper interno: centraliza o painel (igual “aba principal”) */
 .psf-inner {
   width: 100%;
-  max-width: 1180px; /* ajuste fino: 1100–1300 */
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 12px 24px;
+  padding: 0 24px;
   box-sizing: border-box;
-
   display: grid;
-  grid-template-columns: auto auto 1fr auto; /* rated | active | gauge | status */
+  grid-template-columns: auto 1px auto 1px 80px 1px auto;
   align-items: center;
-  column-gap: 26px;
-
-  min-height: 94px;
+  min-height: 78px;
+  column-gap: 0;
+  position: relative;
+  z-index: 1;
 }
 
-/* labels */
+.psf-sep {
+  height: 40px;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, rgba(42, 255, 123, 0.30), transparent);
+  align-self: center;
+}
+
 .psf-rated,
 .psf-active {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  position: relative;
+  padding: 0 22px;
 }
 
 .psf-rated-label,
 .psf-active-label {
-  font-size: 11px;
-  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.16em;
+  color: var(--text-muted);
+  opacity: 0.7;
 }
 
 .psf-rated-value {
   font-size: 18px;
   font-weight: 700;
   color: var(--text-main);
+  line-height: 1;
 }
 
 .psf-active-value {
-  font-size: 22px; /* 🔥 destaque maior */
+  font-size: 22px;
   font-weight: 800;
   color: var(--accent-green);
-  text-shadow: 0 0 12px rgba(42, 255, 123, 0.18);
+  line-height: 1;
+  text-shadow: 0 0 16px rgba(42, 255, 123, 0.25);
 }
 
-/* gauge */
 .psf-gauge {
   display: grid;
   place-items: center;
-  width: 100%;
-  position: relative;
+  padding: 0 14px;
 }
 
-/* circle %: centralizado perfeito + glow */
 .psf-gauge-circle {
-  width: 88px;
-  height: 88px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
-
+  border: 2px solid rgba(42, 255, 123, 0.75);
+  background: radial-gradient(circle at 35% 35%, rgba(42, 255, 123, 0.13), rgba(0, 0, 0, 0.5));
   display: grid;
   place-items: center;
-
-  border: 3px solid rgba(42, 255, 123, 0.95);
-
-  background: radial-gradient(
-    circle at 30% 30%,
-    rgba(42, 255, 123, 0.12),
-    rgba(0, 0, 0, 0.35)
-  );
-
-  color: var(--accent-green);
-  font-size: 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
   font-weight: 800;
-
-  text-shadow:
-    0 0 8px rgba(42, 255, 123, 0.55),
-    0 0 16px rgba(42, 255, 123, 0.22);
-
-  box-shadow:
-    0 0 0 1px rgba(42, 255, 123, 0.20) inset,
-    0 0 10px rgba(42, 255, 123, 0.55),
-    0 0 22px rgba(42, 255, 123, 0.25);
+  color: var(--accent-green);
+  animation: gaugeBreath 3s ease-in-out infinite !important;
+  transform: none !important;
 }
 
-/* ícones status */
+@keyframes gaugeBreath {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px rgba(42, 255, 123, 0.18) inset,
+      0 0 12px rgba(42, 255, 123, 0.22),
+      0 0 28px rgba(42, 255, 123, 0.08);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(42, 255, 123, 0.28) inset,
+      0 0 18px rgba(42, 255, 123, 0.40),
+      0 0 40px rgba(42, 255, 123, 0.14);
+  }
+}
+
 .psf-status-icons {
   display: flex;
-  align-items: center;
-  gap: 18px;
-  justify-self: end;
-  position: relative;
-
-  /* evita quebrar linha e empurrar layout */
+  flex-direction: column;
+  gap: 7px;
+  padding: 0 22px;
+  justify-self: start;
   white-space: nowrap;
 }
 
 .psf-status {
-  display: inline-flex;
+  display: inline-flex !important;
   align-items: center;
   gap: 8px;
-  color: #9ae6b4;
-  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
-.psf-status img {
-  width: 18px;
-  height: 18px;
-  display: block;
-
-  /* ✅ glow mais bonito (pra parecer premium, não emoji) */
-  filter:
-    drop-shadow(0 0 6px rgba(42,255,123,.28))
-    drop-shadow(0 0 14px rgba(42,255,123,.16));
-  opacity: .95;
-}
-
-/* ✅ SVG “no comm” (class no HTML: .psf-no-comm) */
-.psf-no-comm {
-  width: 18px;
-  height: 18px;
-  display: block;
-  color: var(--accent-green);
-  filter:
-    drop-shadow(0 0 6px rgba(42,255,123,.28))
-    drop-shadow(0 0 14px rgba(42,255,123,.16));
-  opacity: .95;
-}
-
+.psf-status svg,
+.psf-no-comm,
 .psf-off-icon {
-  width: 18px;
-  height: 18px;
-  display: block;
+  width: 13px;
+  height: 13px;
   color: var(--accent-green);
-  filter:
-    drop-shadow(0 0 6px rgba(42,255,123,.28))
-    drop-shadow(0 0 14px rgba(42,255,123,.16));
-  opacity: .95;
+  filter: drop-shadow(0 0 4px rgba(42, 255, 123, 0.5));
 }
 
-/* linhas verticais neon entre blocos (as “listras”) — versão correta (sem duplicar com psf-rated) */
+.psf-status b {
+  color: var(--accent-green);
+  font-weight: 700;
+}
+
 .psf-active::before,
 .psf-gauge::before,
 .psf-status-icons::before {
-  content: "";
-  position: absolute;
-  left: -14px;
-  top: 10px;
-  bottom: 10px;
-  width: 1px;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    rgba(42, 255, 123, 0.55),
-    transparent
-  );
-  box-shadow:
-    0 0 10px rgba(42, 255, 123, 0.35),
-    0 0 22px rgba(42, 255, 123, 0.16);
-  opacity: 0.9;
+  display: none !important;
 }
-
-/* precisa de position:relative nos blocos que ganham ::before */
-.psf-active,
-.psf-gauge,
-.psf-status-icons { position: relative; }
 
 /* ===============================
    CONTENT & TABLES (100% WIDTH)
@@ -377,19 +411,40 @@ html { scrollbar-gutter: stable; }
 /* cards um pouco mais “deep” + borda suave */
 .card {
   background: var(--bg-card);
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
   margin-bottom: 20px;
   width: 100%;
-  box-shadow: 0 0 24px rgba(0,0,0,.25);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.30);
 }
 
 .card-header {
-  padding: 15px 20px;
-  border-bottom: 1px solid rgba(42, 255, 123, 0.10);
+  padding: 13px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.card-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+}
+
+.tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: rgba(42, 255, 123, 0.07);
+  border: 1px solid rgba(42, 255, 123, 0.22);
+  color: var(--accent-green);
+  letter-spacing: 0.08em;
 }
 
 .portfolio-table,
@@ -400,20 +455,29 @@ html { scrollbar-gutter: stable; }
 }
 
 th {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 400;
   text-align: left;
-  padding: 16px 20px;
+  padding: 10px 16px;
   color: var(--text-muted);
-  font-size: 11px;
+  opacity: 0.6;
   text-transform: uppercase;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  background: var(--bg-card-alt);
+  letter-spacing: 0.10em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.18);
 }
 
 td {
-  padding: 16px 20px;
+  padding: 12px 16px;
+  font-size: 12px;
   color: var(--text-main);
-  font-size: 13px;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+  transition: background 0.15s;
+}
+
+tbody tr:hover td {
+  background: rgba(42, 255, 123, 0.025);
 }
 
 /* ===============================
@@ -428,40 +492,74 @@ td {
 }
 
 .plant-icon {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-right: 0;
-  font-size: 16px;
-  background: rgba(255, 255, 255, 0.04);
+  font-size: 14px;
+  background: rgba(0, 0, 0, 0.30);
   transition: all 0.25s ease;
 }
 
 .plant-icon--ok {
   color: #00e676;
   box-shadow:
-    0 0 0 2px rgba(0, 230, 118, 0.35),
-    0 0 10px rgba(0, 230, 118, 0.6),
-    inset 0 0 6px rgba(0, 230, 118, 0.25);
+    0 0 0 1.5px rgba(0, 230, 118, 0.40),
+    0 0 10px rgba(0, 230, 118, 0.50),
+    0 0 22px rgba(0, 230, 118, 0.15),
+    inset 0 0 5px rgba(0, 230, 118, 0.15);
 }
 
 .plant-icon--medium {
-  color: #ffeb3b;
+  color: #ffd84d;
   box-shadow:
-    0 0 0 2px rgba(255, 235, 59, 0.45),
-    0 0 12px rgba(255, 235, 59, 0.8),
-    inset 0 0 6px rgba(255, 235, 59, 0.3);
+    0 0 0 1.5px rgba(255, 216, 77, 0.45),
+    0 0 12px rgba(255, 216, 77, 0.60),
+    0 0 22px rgba(255, 216, 77, 0.16),
+    inset 0 0 5px rgba(255, 216, 77, 0.18);
+  animation: medPulse 2.5s ease-in-out infinite;
 }
 
 .plant-icon--high {
   color: #ff5c5c;
   box-shadow:
-    0 0 0 2px rgba(255, 92, 92, 0.5),
-    0 0 14px rgba(255, 92, 92, 0.9),
-    inset 0 0 6px rgba(255, 92, 92, 0.35);
+    0 0 0 1.5px rgba(255, 92, 92, 0.50),
+    0 0 14px rgba(255, 92, 92, 0.70),
+    0 0 28px rgba(255, 92, 92, 0.18),
+    inset 0 0 5px rgba(255, 92, 92, 0.22);
+  animation: hiPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes medPulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1.5px rgba(255, 216, 77, 0.35),
+      0 0 8px rgba(255, 216, 77, 0.45),
+      inset 0 0 4px rgba(255, 216, 77, 0.12);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px rgba(255, 216, 77, 0.55),
+      0 0 16px rgba(255, 216, 77, 0.70),
+      inset 0 0 7px rgba(255, 216, 77, 0.22);
+  }
+}
+
+@keyframes hiPulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1.5px rgba(255, 92, 92, 0.40),
+      0 0 10px rgba(255, 92, 92, 0.55),
+      inset 0 0 4px rgba(255, 92, 92, 0.18);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px rgba(255, 92, 92, 0.65),
+      0 0 20px rgba(255, 92, 92, 0.80),
+      inset 0 0 8px rgba(255, 92, 92, 0.30);
+  }
 }
 
 .plant-name-text {
@@ -551,10 +649,6 @@ td {
   justify-content: center;
 }
 
-
-.plant-icon--high {
-  animation: alarmRedPulse 1.45s ease-in-out infinite;
-}
 
 .alarm-state-pill {
   display: inline-block;
@@ -741,17 +835,19 @@ td {
 /* ===============================
    PORTFOLIO METRICS (SCADA GLOW)
 ================================ */
-.metric-neutral {
-  color: var(--text-main);
-  font-weight: 500;
-}
-
 .metric-active {
   color: #39e58c;
-  font-weight: 700;
-  text-shadow:
-    0 0 6px rgba(57, 229, 140, 0.45),
-    0 0 12px rgba(57, 229, 140, 0.35);
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  text-shadow: none;
+}
+
+.metric-neutral {
+  color: var(--text-main);
+  opacity: 0.65;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
 }
 
 /* ===============================
@@ -878,7 +974,7 @@ td {
 /* 3) resumo fica grudado logo abaixo da topbar */
 .plant-summary-fixed{
   position: sticky;
-  top: 60px;              /* mesma altura da topbar */
+  top: 54px;              /* mesma altura da topbar */
   z-index: 250;
   background: linear-gradient(
     180deg,
