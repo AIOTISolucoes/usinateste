@@ -7,7 +7,7 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Exo+2:wght@600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -21,11 +21,69 @@
     <aside class="sidebar">
       <!-- ✅ LOGO TRIÂNGULO (não fica preto; o CSS do layout.css dá o glow) -->
       <div class="sidebar-logo aioti-logo" title="AIOTI">
-        <svg class="aioti-mark" viewBox="0 0 128 128" aria-hidden="true">
-          <!-- contorno -->
-          <path class="aioti-outline" d="M64 10 L118 118 H10 Z"></path>
-          <!-- recorte interno (furo) -->
-          <path class="aioti-cut" d="M64 34 L92 92 H36 Z"></path>
+        <svg class="aioti-mark" viewBox="0 0 100 100" fill="none"
+             xmlns="http://www.w3.org/2000/svg" style="overflow:visible" aria-hidden="true">
+          <defs>
+            <linearGradient id="triGrad" x1="50" y1="8" x2="50" y2="90" gradientUnits="userSpaceOnUse">
+              <stop offset="0%"   stop-color="#3dffb0"/>
+              <stop offset="100%" stop-color="#0e8f55"/>
+            </linearGradient>
+            <linearGradient id="triGrad2" x1="20" y1="90" x2="80" y2="90" gradientUnits="userSpaceOnUse">
+              <stop offset="0%"   stop-color="#1cc97a"/>
+              <stop offset="100%" stop-color="#3dffb0"/>
+            </linearGradient>
+            <filter id="sglow">
+              <feGaussianBlur stdDeviation="2" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id="sglowStrong">
+              <feGaussianBlur stdDeviation="3.5" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+
+          <polygon points="50,8 92,82 8,82"
+            stroke="url(#triGrad)" stroke-width="4" fill="none"
+            filter="url(#sglow)" stroke-linejoin="round">
+            <animate attributeName="stroke-dasharray"
+              from="0 300" to="300 0" dur="1.2s" begin="0.1s"
+              fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+            <animate attributeName="opacity"
+              values="0.7;1;0.7" dur="3s" begin="1.3s" repeatCount="indefinite"/>
+          </polygon>
+
+          <polygon points="50,30 68,65 32,65"
+            stroke="url(#triGrad2)" stroke-width="3" fill="none"
+            filter="url(#sglow)" stroke-linejoin="round">
+            <animate attributeName="stroke-dasharray"
+              from="0 200" to="200 0" dur="0.9s" begin="0.7s"
+              fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+            <animate attributeName="opacity"
+              values="0.6;1;0.6" dur="2.6s" begin="1.6s" repeatCount="indefinite"/>
+          </polygon>
+
+          <circle cx="50" cy="50" r="3" fill="#3dffb0" filter="url(#sglowStrong)" opacity="0">
+            <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.4s" fill="freeze"/>
+            <animate attributeName="r" values="3;4.5;3" dur="2s" begin="1.7s" repeatCount="indefinite"/>
+          </circle>
+
+          <line x1="8" y1="82" x2="92" y2="82"
+            stroke="url(#triGrad2)" stroke-width="2.5" stroke-linecap="round"
+            filter="url(#sglow)" opacity="0">
+            <animate attributeName="opacity" values="0;0.8" dur="0.4s" begin="1s" fill="freeze"/>
+            <animate attributeName="opacity" values="0.8;0.3;0.8" dur="2.5s" begin="1.5s" repeatCount="indefinite"/>
+          </line>
+
+          <circle cx="50" cy="8" r="2.5" fill="#3dffb0" opacity="0">
+            <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.2s" fill="freeze"/>
+            <animate attributeName="r" values="2.5;4;2.5" dur="3s" begin="2s" repeatCount="indefinite"/>
+          </circle>
+          <circle cx="92" cy="82" r="2.5" fill="#1cc97a" opacity="0">
+            <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.25s" fill="freeze"/>
+          </circle>
+          <circle cx="8" cy="82" r="2.5" fill="#1cc97a" opacity="0">
+            <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.3s" fill="freeze"/>
+          </circle>
         </svg>
       </div>
 
@@ -440,8 +498,6 @@
             </div>
           </div>
         </div>
-
-        <header></header>
 
         <!-- TELA DE DIAGRAMA (OCULTA DO MENU) -->
         <div id="diagramView" class="view-section hidden">
