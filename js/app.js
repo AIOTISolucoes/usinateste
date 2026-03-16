@@ -98,7 +98,9 @@ let DATASTUDIO_STATE = {
   consolidationPeriod: "5min", // 5min | daily | weekly | monthly | yearly | hdaily etc
 
   chartData: null,
-  forceHeroState: false
+  forceHeroState: false,
+  catalogOpen: false,
+  catalogConfirmed: false
 };
 
 let DATASTUDIO_CHART = null;
@@ -1264,6 +1266,29 @@ function dsNormalizeApiBody(data) {
   return data;
 }
 
+function dsNormalizeContextText(value) {
+  return dsSafeTrim(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function dsContextMatches(tagContext, selectedContext) {
+  if (!selectedContext || selectedContext === "all") return true;
+
+  const tagNorm = dsNormalizeContextText(tagContext);
+  const selectedNorm = dsNormalizeContextText(selectedContext);
+  if (!tagNorm) return false;
+
+  const tagNum = tagNorm.match(/\d+/)?.[0] || null;
+  const selectedNum = selectedNorm.match(/\d+/)?.[0] || null;
+  if (tagNum && selectedNum && tagNum === selectedNum) return true;
+
+  return tagNorm.includes(selectedNorm) || selectedNorm.includes(tagNorm);
+}
+
 function getDataStudioUIElements() {
   return {
     startDateInput: document.getElementById("dsStartDateInput"),
@@ -1271,9 +1296,13 @@ function getDataStudioUIElements() {
     plantSelect: document.getElementById("dsPlantSelect"),
     openTagsBtn: document.getElementById("dsOpenTagsBtn"),
     backToHeroBtn: document.getElementById("dsBackToHeroBtn"),
+    exportBtn: document.getElementById("dsExportBtn"),
+    zoomInBtn: document.getElementById("dsZoomInBtn"),
+    zoomOutBtn: document.getElementById("dsZoomOutBtn"),
+    zoomResetBtn: document.getElementById("dsZoomResetBtn"),
 
-    modal: document.getElementById("dsTagsModal"),
-    modalCloseBtn: document.getElementById("dsModalCloseBtn"),
+    catalogSection: document.getElementById("dsCatalogSection"),
+    contextInfo: document.getElementById("dsContextInfo"),
 
     dataKindSelect: document.getElementById("dsDataKindSelect"),
     sourceSelect: document.getElementById("dsSourceSelect"),
@@ -1281,6 +1310,7 @@ function getDataStudioUIElements() {
     searchInput: document.getElementById("dsSearchInput"),
     tagsApplyBtn: document.getElementById("dsTagsApplyBtn"),
     tagsClearBtn: document.getElementById("dsTagsClearBtn"),
+    confirmSelectionBtn: document.getElementById("dsConfirmSelectionBtn"),
     tagsTableBody: document.getElementById("dsTagsTbody"),
     selectedCount: document.getElementById("dsSelectedCount"),
     selectedTagsList: document.getElementById("dsSelectedTagsList"),
@@ -1369,11 +1399,11 @@ function populateDataStudioContextSelect(tags) {
 
 
 function updateDataStudioStageUI() {
-  const { emptyState, workspace } = getDataStudioUIElements();
+  const { emptyState, workspace, catalogSection, openTagsBtn } = getDataStudioUIElements();
   if (!emptyState || !workspace) return;
 
   const hasSelection = Array.isArray(DATASTUDIO_STATE.selectedTags) && DATASTUDIO_STATE.selectedTags.length > 0;
-  const showWorkspace = hasSelection && !DATASTUDIO_STATE.forceHeroState;
+  const showWorkspace = hasSelection && DATASTUDIO_STATE.catalogConfirmed && !DATASTUDIO_STATE.forceHeroState;
 
   if (showWorkspace) {
     emptyState.classList.add("hidden");
@@ -1381,6 +1411,14 @@ function updateDataStudioStageUI() {
   } else {
     emptyState.classList.remove("hidden");
     workspace.classList.add("hidden");
+  }
+
+  if (catalogSection) {
+    catalogSection.classList.toggle("is-open", Boolean(DATASTUDIO_STATE.catalogOpen));
+  }
+
+  if (openTagsBtn && !DATASTUDIO_STATE.loadingTags) {
+    openTagsBtn.textContent = DATASTUDIO_STATE.catalogOpen ? "−" : "+";
   }
 
   renderSelectedTagsList();
@@ -1441,6 +1479,7 @@ function renderDataStudioTagsTable(tags) {
     if (!pathname) return;
 
     const tr = document.createElement("tr");
+    tr.classList.add("ds-table-row-clickable");
     const checked = isTagSelected(tag) ? "checked" : "";
     tr.innerHTML = `
       <td><input type="checkbox" data-ds-pathname="${pathname.replaceAll('"', '&quot;')}" ${checked}></td>
@@ -1454,8 +1493,12 @@ function renderDataStudioTagsTable(tags) {
     `;
 
     const checkbox = tr.querySelector("input[type='checkbox']");
-    checkbox?.addEventListener("change", (ev) => {
-      if (ev.target.checked) {
+    const syncRowSelectionState = () => {
+      tr.classList.toggle("is-selected", Boolean(checkbox?.checked));
+    };
+
+    const applySelection = (checkedState) => {
+      if (checkedState) {
         const ok = addSelectedTag({
           id: tag?.id ?? null,
           tag_id: tag?.id ?? null,
@@ -1470,12 +1513,26 @@ function renderDataStudioTagsTable(tags) {
           unit: tag?.unit ?? null,
           description: tag?.description ?? null
         });
-        if (!ok) ev.target.checked = false;
+        if (!ok && checkbox) checkbox.checked = false;
       } else {
         removeSelectedTag(tag);
       }
       updateSelectedTagsCounter();
+      syncRowSelectionState();
+    };
+
+    checkbox?.addEventListener("change", (ev) => {
+      applySelection(Boolean(ev.target.checked));
     });
+
+    tr.addEventListener("click", (ev) => {
+      if (ev.target?.closest("input, button, a")) return;
+      if (!checkbox) return;
+      checkbox.checked = !checkbox.checked;
+      applySelection(Boolean(checkbox.checked));
+    });
+
+    syncRowSelectionState();
 
     tagsTableBody.appendChild(tr);
   });
@@ -1484,12 +1541,15 @@ function renderDataStudioTagsTable(tags) {
   updateDataStudioStageUI();
 }
 
+
 function setDataStudioLoadingTags(isLoading) {
   DATASTUDIO_STATE.loadingTags = Boolean(isLoading);
   const { openTagsBtn, tagsApplyBtn, tagsClearBtn } = getDataStudioUIElements();
   if (openTagsBtn) {
     openTagsBtn.disabled = DATASTUDIO_STATE.loadingTags;
-    openTagsBtn.textContent = DATASTUDIO_STATE.loadingTags ? "Carregando..." : "+";
+    openTagsBtn.textContent = DATASTUDIO_STATE.loadingTags
+      ? "Carregando..."
+      : (DATASTUDIO_STATE.catalogOpen ? "−" : "+");
   }
   if (tagsApplyBtn) tagsApplyBtn.disabled = DATASTUDIO_STATE.loadingTags;
   if (tagsClearBtn) tagsClearBtn.disabled = DATASTUDIO_STATE.loadingTags;
@@ -1545,7 +1605,7 @@ function buildDataStudioSelectionPayload() {
     throw new Error("Limite de 50 medidas excedido.");
   }
 
-  const allowedAgg = new Set(["none", "avg", "integral", "median", "max", "mode", "propagation", "sum"]);
+  const allowedAgg = new Set(["none", "avg", "integral", "median", "max", "sum"]);
   const allowedPeriod = new Set(["5min", "daily", "weekly", "monthly", "yearly", "hdaily", "hweekly", "hmonthly", "hyearly"]);
 
   const aggregationType = allowedAgg.has(DATASTUDIO_STATE.aggregationType)
@@ -1588,9 +1648,105 @@ function buildDataStudioSelectionPayload() {
   };
 }
 
-function openDataStudioTagsModal() {
-  const { modal, plantSelect, startDateInput, endDateInput } = getDataStudioUIElements();
-  if (!modal) return;
+function updateDataStudioContextInfo() {
+  const { contextInfo } = getDataStudioUIElements();
+  if (!contextInfo) return;
+
+  const selectedContext = dsSafeTrim(DATASTUDIO_STATE.selectedContext) || "all";
+  if (selectedContext && selectedContext !== "all") {
+    contextInfo.textContent = `Exibindo medidas de: ${selectedContext}`;
+    contextInfo.classList.remove("hidden");
+  } else {
+    contextInfo.textContent = "Exibindo medidas de: todos contextos";
+    contextInfo.classList.remove("hidden");
+  }
+}
+
+function updateDataStudioExportButton() {
+  const { exportBtn } = getDataStudioUIElements();
+  if (!exportBtn) return;
+  exportBtn.disabled = !DATASTUDIO_STATE.selectionId;
+}
+
+async function exportDataStudioSelection() {
+  if (!DATASTUDIO_STATE.selectionId) {
+    window.alert("Salve uma seleção antes de exportar.");
+    return;
+  }
+
+  const { exportBtn } = getDataStudioUIElements();
+  const oldHtml = exportBtn ? exportBtn.innerHTML : "";
+
+  try {
+    if (exportBtn) {
+      exportBtn.disabled = true;
+      exportBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    }
+
+    const url = `${API_BASE}/datastudio/export?selection_id=${encodeURIComponent(DATASTUDIO_STATE.selectionId)}`;
+
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const headers = {};
+    if (user.customer_id) headers["X-Customer-Id"] = user.customer_id;
+    if (user.is_superuser === true) headers["X-Is-Superuser"] = "true";
+
+    const res = await fetch(url, { headers });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      throw new Error(`Falha ao exportar (${res.status}) ${txt}`);
+    }
+
+    const blob = await res.blob();
+
+    let filename = `datastudio_export_${DATASTUDIO_STATE.selectionId}.csv`;
+    const contentDisposition = res.headers.get("Content-Disposition");
+    const match = contentDisposition && contentDisposition.match(/filename="([^"]+)"/i);
+    if (match && match[1]) {
+      filename = match[1];
+    }
+
+    const blobUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(blobUrl);
+  } catch (err) {
+    console.error("[DataStudio] erro ao exportar CSV:", err);
+    window.alert(`Não foi possível exportar o CSV: ${err.message || err}`);
+  } finally {
+    if (exportBtn) {
+      exportBtn.innerHTML = oldHtml || '<i class="fa-solid fa-file-csv"></i>';
+      updateDataStudioExportButton();
+    }
+  }
+}
+
+function zoomDataStudioChart(factor = 1.2) {
+  if (!DATASTUDIO_CHART || typeof DATASTUDIO_CHART.zoom !== "function") return;
+
+  try {
+    DATASTUDIO_CHART.zoom({ x: factor, y: factor });
+  } catch (err) {
+    console.warn("[DataStudio] erro ao aplicar zoom:", err);
+  }
+}
+
+function resetDataStudioChartZoom() {
+  if (!DATASTUDIO_CHART || typeof DATASTUDIO_CHART.resetZoom !== "function") return;
+
+  try {
+    DATASTUDIO_CHART.resetZoom();
+  } catch (err) {
+    console.warn("[DataStudio] erro ao resetar zoom:", err);
+  }
+}
+
+function openDataStudioCatalogInline({ resetFilters = false } = {}) {
+  const { plantSelect, startDateInput, endDateInput } = getDataStudioUIElements();
 
   DATASTUDIO_STATE.startDate = dsSafeTrim(startDateInput?.value);
   DATASTUDIO_STATE.endDate = dsSafeTrim(endDateInput?.value);
@@ -1602,22 +1758,55 @@ function openDataStudioTagsModal() {
     return;
   }
 
+  if (resetFilters) {
+    DATASTUDIO_STATE.selectedDataKind = "all";
+    DATASTUDIO_STATE.selectedSource = "all";
+    DATASTUDIO_STATE.selectedContext = "all";
+    DATASTUDIO_STATE.searchText = "";
+
+    const { dataKindSelect, sourceSelect, contextSelect, searchInput } = getDataStudioUIElements();
+    if (dataKindSelect) dataKindSelect.value = "all";
+    if (sourceSelect) sourceSelect.value = "all";
+    if (contextSelect) contextSelect.value = "all";
+    if (searchInput) searchInput.value = "";
+  }
+
+  DATASTUDIO_STATE.catalogOpen = true;
   DATASTUDIO_STATE.forceHeroState = false;
   updateDataStudioStageUI();
-  modal.classList.remove("hidden");
+  updateDataStudioContextInfo();
   fetchDataStudioTags();
 }
 
-function closeDataStudioTagsModal() {
-  const { modal } = getDataStudioUIElements();
-  if (!modal) return;
-  modal.classList.add("hidden");
+function toggleDataStudioCatalogInline() {
+  if (!DATASTUDIO_STATE.catalogOpen) {
+    openDataStudioCatalogInline({ resetFilters: !DATASTUDIO_STATE.availableTags.length });
+    return;
+  }
+  DATASTUDIO_STATE.catalogOpen = false;
+  updateDataStudioStageUI();
+}
+
+function confirmDataStudioCatalogSelection() {
+  if (!Array.isArray(DATASTUDIO_STATE.selectedTags) || !DATASTUDIO_STATE.selectedTags.length) {
+    window.alert("Selecione ao menos uma medida antes de confirmar.");
+    return;
+  }
+
+  DATASTUDIO_STATE.catalogConfirmed = true;
+  DATASTUDIO_STATE.forceHeroState = false;
+  DATASTUDIO_STATE.catalogOpen = false;
+  updateDataStudioStageUI();
+
+  setTimeout(() => {
+    const { bulkPanel } = getDataStudioUIElements();
+    bulkPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 120);
 }
 
 async function fetchDataStudioTags() {
   const { plantSelect, dataKindSelect, sourceSelect, contextSelect, searchInput } = getDataStudioUIElements();
 
-  const params = new URLSearchParams();
   const plantId = dsSafeTrim(plantSelect?.value || DATASTUDIO_STATE.selectedPlantId);
   const dataKind = dsSafeTrim(dataKindSelect?.value || DATASTUDIO_STATE.selectedDataKind);
   const source = dsSafeTrim(sourceSelect?.value || DATASTUDIO_STATE.selectedSource);
@@ -1630,12 +1819,19 @@ async function fetchDataStudioTags() {
   DATASTUDIO_STATE.selectedContext = context || "all";
   DATASTUDIO_STATE.searchText = q;
 
+  const params = new URLSearchParams();
   if (plantId) params.set("plant_id", plantId);
   if (dataKind && dataKind !== "all") params.set("data_kind", dataKind);
   if (source && source !== "all") params.set("source", source);
-  if (context && context !== "all") params.set("context", context);
   if (q) params.set("q", q);
-  params.set("limit", "200");
+  params.set("limit", "1000");
+
+  const normalizeTagsResponse = (parsed) => {
+    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed?.items)) return parsed.items;
+    if (Array.isArray(parsed?.data)) return parsed.data;
+    return [];
+  };
 
   setDataStudioLoadingTags(true);
 
@@ -1646,17 +1842,25 @@ async function fetchDataStudioTags() {
     const data = await res.json();
     const parsed = dsNormalizeApiBody(data);
 
-    let tags = [];
-    if (Array.isArray(parsed)) tags = parsed;
-    else if (Array.isArray(parsed?.items)) tags = parsed.items;
-    else if (Array.isArray(parsed?.data)) tags = parsed.data;
+    const allTags = normalizeTagsResponse(parsed);
+    console.log("[DataStudio] TAGS RECEBIDAS:", allTags.length);
 
-    DATASTUDIO_STATE.availableTags = tags;
-    populateDataStudioContextSelect(tags);
-    renderDataStudioTagsTable(tags);
+    populateDataStudioContextSelect(allTags);
+
+    const contextAfterPopulate = dsSafeTrim(contextSelect?.value || DATASTUDIO_STATE.selectedContext || "all");
+    DATASTUDIO_STATE.selectedContext = contextAfterPopulate || "all";
+
+    const filteredTags = (contextAfterPopulate && contextAfterPopulate !== "all")
+      ? allTags.filter((tag) => dsContextMatches(tag?.context, contextAfterPopulate))
+      : allTags;
+
+    DATASTUDIO_STATE.availableTags = filteredTags;
+    updateDataStudioContextInfo();
+    renderDataStudioTagsTable(filteredTags);
   } catch (err) {
     console.error("[DataStudio] erro ao buscar tags:", err);
     DATASTUDIO_STATE.availableTags = [];
+    updateDataStudioContextInfo();
     renderDataStudioTagsTable([]);
   } finally {
     setDataStudioLoadingTags(false);
@@ -1683,6 +1887,11 @@ async function saveDataStudioSelection() {
 
     const selectionId = parsed?.selection_id ?? parsed?.id ?? parsed?.selectionId ?? null;
     DATASTUDIO_STATE.selectionId = selectionId;
+
+    const { loadSeriesBtn } = getDataStudioUIElements();
+    if (loadSeriesBtn) loadSeriesBtn.disabled = false;
+    updateDataStudioExportButton();
+
     DATASTUDIO_STATE.forceHeroState = false;
     updateDataStudioStageUI();
     window.alert(selectionId ? `Seleção salva! ID ${selectionId}` : "Seleção salva com sucesso.");
@@ -1740,6 +1949,12 @@ function renderDataStudioChart(seriesPayload) {
     ? seriesPayload.series
     : (Array.isArray(seriesPayload?.items) ? seriesPayload.items : []);
 
+  const scales = {
+    x: { ticks: { color: "#9fb0bf" }, grid: { color: "rgba(255,255,255,.08)" } },
+    y: { type: "linear", position: "left", ticks: { color: "#9fb0bf" }, grid: { color: "rgba(255,255,255,.08)" } }
+  };
+  const axisByUnit = new Map([["_default_", "y"]]);
+
   if (seriesList.length) {
     const palette = ["#4da3ff", "#39e58c", "#ffd84d", "#ff8a65", "#b39ddb", "#80cbc4"];
     seriesList.forEach((serie, idx) => {
@@ -1754,6 +1969,19 @@ function renderDataStudioChart(seriesPayload) {
         });
       }
 
+      const unitKey = dsSafeTrim(serie?.unit || "") || "_default_";
+      if (!axisByUnit.has(unitKey)) {
+        const axisIdx = axisByUnit.size;
+        const axisId = axisIdx === 1 ? "y1" : `y${axisIdx}`;
+        axisByUnit.set(unitKey, axisId);
+        scales[axisId] = {
+          type: "linear",
+          position: axisIdx % 2 === 0 ? "left" : "right",
+          grid: { drawOnChartArea: false, color: "rgba(255,255,255,.08)" },
+          ticks: { color: "#9fb0bf" }
+        };
+      }
+
       datasets.push({
         label: serie?.label || serie?.pathname || `Série ${idx + 1}`,
         data: points.map((pt) => Number(pt?.value ?? pt?.y ?? null)),
@@ -1762,7 +1990,10 @@ function renderDataStudioChart(seriesPayload) {
         borderWidth: 2,
         tension: 0.25,
         pointRadius: 0,
-        fill: false
+        pointHoverRadius: 6,
+        pointHitRadius: 16,
+        fill: false,
+        yAxisID: axisByUnit.get(unitKey) || "y"
       });
     });
   } else {
@@ -1775,7 +2006,10 @@ function renderDataStudioChart(seriesPayload) {
       borderWidth: 2,
       tension: 0.25,
       pointRadius: 0,
-      fill: false
+      pointHoverRadius: 6,
+      pointHitRadius: 16,
+      fill: false,
+      yAxisID: "y"
     });
   }
 
@@ -1785,16 +2019,68 @@ function renderDataStudioChart(seriesPayload) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: {
-        legend: { labels: { color: "#dbe7ef" } }
+      interaction: {
+        mode: "index",
+        intersect: false,
+        axis: "x"
       },
-      scales: {
-        x: { ticks: { color: "#9fb0bf" }, grid: { color: "rgba(255,255,255,.08)" } },
-        y: { ticks: { color: "#9fb0bf" }, grid: { color: "rgba(255,255,255,.08)" } }
-      }
+      hover: {
+        mode: "index",
+        intersect: false
+      },
+      elements: {
+        point: {
+          radius: 0,
+          hoverRadius: 6,
+          hitRadius: 16
+        },
+        line: {
+          borderWidth: 2
+        }
+      },
+      plugins: {
+        legend: { labels: { color: "#dbe7ef" } },
+        tooltip: {
+          enabled: true,
+          mode: "index",
+          intersect: false,
+          displayColors: true,
+          backgroundColor: "rgba(6, 18, 14, 0.96)",
+          borderColor: "rgba(42,255,123,.22)",
+          borderWidth: 1,
+          titleColor: "#dbe7ef",
+          bodyColor: "#dbe7ef",
+          padding: 10,
+          caretSize: 6
+        },
+        zoom: {
+          limits: {
+            x: { minRange: 5 },
+            y: { minRange: 1 }
+          },
+          pan: {
+            enabled: true,
+            mode: "xy"
+          },
+          zoom: {
+            wheel: {
+              enabled: true
+            },
+            pinch: {
+              enabled: true
+            },
+            drag: {
+              enabled: false
+            },
+            mode: "xy"
+          }
+        }
+      },
+      scales
     }
   });
 }
+
 
 function populateDataStudioPlantSelect(plants) {
   const { plantSelect } = getDataStudioUIElements();
@@ -1857,6 +2143,81 @@ function syncDataStudioAggregationUI() {
   }
 }
 
+function markDataStudioSeriesDirty() {
+  DATASTUDIO_STATE.selectionId = null;
+  DATASTUDIO_STATE.chartData = null;
+
+  const { loadSeriesBtn, saveSelectionBtn } = getDataStudioUIElements();
+
+  if (loadSeriesBtn) {
+    loadSeriesBtn.disabled = true;
+    loadSeriesBtn.textContent = "Carregar séries";
+  }
+
+  if (saveSelectionBtn) {
+    saveSelectionBtn.disabled = false;
+  }
+
+  renderDataStudioChart(null);
+  updateDataStudioExportButton();
+}
+
+function formatDateInputValue(dateObj) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const d = String(dateObj.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function autoAdjustDataStudioDateRangeByMode() {
+  const { startDateInput, endDateInput } = getDataStudioUIElements();
+  if (!startDateInput || !endDateInput) return;
+
+  const now = new Date();
+  const start = new Date(now);
+
+  const mode = dsSafeTrim(DATASTUDIO_STATE.aggregationMode || "historico");
+  const period = dsSafeTrim(DATASTUDIO_STATE.consolidationPeriod || "5min");
+
+  if (mode === "historico") {
+    start.setDate(now.getDate() - 7);
+  } else {
+    switch (period) {
+      case "5min":
+        start.setDate(now.getDate() - 1);
+        break;
+      case "daily":
+      case "hdaily":
+        start.setDate(now.getDate() - 30);
+        break;
+      case "weekly":
+      case "hweekly":
+        start.setDate(now.getDate() - 90);
+        break;
+      case "monthly":
+      case "hmonthly":
+        start.setMonth(now.getMonth() - 12);
+        break;
+      case "yearly":
+      case "hyearly":
+        start.setFullYear(now.getFullYear() - 5);
+        break;
+      default:
+        start.setDate(now.getDate() - 30);
+        break;
+    }
+  }
+
+  const startStr = formatDateInputValue(start);
+  const endStr = formatDateInputValue(now);
+
+  startDateInput.value = startStr;
+  endDateInput.value = endStr;
+
+  DATASTUDIO_STATE.startDate = startStr;
+  DATASTUDIO_STATE.endDate = endStr;
+}
+
 function wireDataStudioOnce() {
   if (DATASTUDIO_STATE.wired) return;
 
@@ -1876,12 +2237,18 @@ function wireDataStudioOnce() {
   DATASTUDIO_STATE.startDate = dsSafeTrim(ui.startDateInput?.value);
   DATASTUDIO_STATE.endDate = dsSafeTrim(ui.endDateInput?.value);
 
+  autoAdjustDataStudioDateRangeByMode();
+
   ui.startDateInput?.addEventListener("change", (e) => {
     DATASTUDIO_STATE.startDate = dsSafeTrim(e.target.value);
+    DATASTUDIO_STATE.catalogConfirmed = false;
+    markDataStudioSeriesDirty();
   });
 
   ui.endDateInput?.addEventListener("change", (e) => {
     DATASTUDIO_STATE.endDate = dsSafeTrim(e.target.value);
+    DATASTUDIO_STATE.catalogConfirmed = false;
+    markDataStudioSeriesDirty();
   });
 
   ui.plantSelect?.addEventListener("change", (e) => {
@@ -1909,6 +2276,7 @@ function wireDataStudioOnce() {
     renderDataStudioTagsTable([]);
     renderDataStudioChart(null);
     updateSelectedTagsCounter();
+    updateDataStudioExportButton();
     updateDataStudioStageUI();
   });
 
@@ -1922,6 +2290,8 @@ function wireDataStudioOnce() {
 
   ui.contextSelect?.addEventListener("change", (e) => {
     DATASTUDIO_STATE.selectedContext = dsSafeTrim(e.target.value) || "all";
+    updateDataStudioContextInfo();
+    fetchDataStudioTags();
   });
 
   ui.searchInput?.addEventListener("input", (e) => {
@@ -1930,43 +2300,62 @@ function wireDataStudioOnce() {
 
   ui.modeSelect?.addEventListener("change", (e) => {
     DATASTUDIO_STATE.aggregationMode = dsSafeTrim(e.target.value) || "historico";
+
     syncDataStudioAggregationUI();
+    autoAdjustDataStudioDateRangeByMode();
+    markDataStudioSeriesDirty();
   });
 
   ui.aggregationSelect?.addEventListener("change", (e) => {
     DATASTUDIO_STATE.aggregationType = dsSafeTrim(e.target.value) || "avg";
+    markDataStudioSeriesDirty();
   });
 
   ui.consolidationSelect?.addEventListener("change", (e) => {
     DATASTUDIO_STATE.consolidationPeriod = dsSafeTrim(e.target.value) || "5min";
+
+    autoAdjustDataStudioDateRangeByMode();
+    markDataStudioSeriesDirty();
   });
 
-  ui.openTagsBtn?.addEventListener("click", openDataStudioTagsModal);
-  ui.modalCloseBtn?.addEventListener("click", closeDataStudioTagsModal);
+  ui.openTagsBtn?.addEventListener("click", toggleDataStudioCatalogInline);
   ui.tagsApplyBtn?.addEventListener("click", fetchDataStudioTags);
+  ui.confirmSelectionBtn?.addEventListener("click", confirmDataStudioCatalogSelection);
 
   ui.tagsClearBtn?.addEventListener("click", () => {
     DATASTUDIO_STATE.selectedTags = [];
     DATASTUDIO_STATE.selectionId = null;
     DATASTUDIO_STATE.chartData = null;
     DATASTUDIO_STATE.forceHeroState = false;
+    DATASTUDIO_STATE.catalogConfirmed = false;
+    DATASTUDIO_STATE.catalogOpen = true;
     renderDataStudioTagsTable(DATASTUDIO_STATE.availableTags);
+    updateDataStudioExportButton();
     updateDataStudioStageUI();
   });
 
   ui.saveSelectionBtn?.addEventListener("click", saveDataStudioSelection);
-  ui.loadSeriesBtn?.addEventListener("click", fetchDataStudioSeriesBySelection);
+  ui.loadSeriesBtn?.addEventListener("click", async () => {
+    await saveDataStudioSelection();
+  });
+  ui.exportBtn?.addEventListener("click", exportDataStudioSelection);
+  ui.zoomInBtn?.addEventListener("click", () => zoomDataStudioChart(1.2));
+  ui.zoomOutBtn?.addEventListener("click", () => zoomDataStudioChart(0.8));
+  ui.zoomResetBtn?.addEventListener("click", resetDataStudioChartZoom);
   ui.backToHeroBtn?.addEventListener("click", () => {
     DATASTUDIO_STATE.forceHeroState = true;
+    DATASTUDIO_STATE.catalogConfirmed = false;
+    DATASTUDIO_STATE.catalogOpen = true;
     updateDataStudioStageUI();
-  });
-
-  ui.modal?.addEventListener("click", (e) => {
-    if (e.target === ui.modal) closeDataStudioTagsModal();
+    setTimeout(() => {
+      const { catalogSection } = getDataStudioUIElements();
+      catalogSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 120);
   });
 
   syncDataStudioAggregationUI();
   updateSelectedTagsCounter();
+  updateDataStudioExportButton();
   updateDataStudioStageUI();
 }
 
