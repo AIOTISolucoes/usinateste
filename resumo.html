@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Monitoramento – Usina Solar</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Exo+2:wght@600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+</head>
+
+<body>
+  <div class="layout">
+    <!-- MENU LATERAL (APENAS 3 ÍCONES) -->
+    <aside class="sidebar">
+      <!-- ✅ LOGO TRIÂNGULO (não fica preto; o CSS do layout.css dá o glow) -->
+      <div class="sidebar-logo aioti-logo" title="AIOTI">
+        <svg class="aioti-mark" viewBox="0 0 100 100" fill="none"
+             xmlns="http://www.w3.org/2000/svg" style="overflow:visible" aria-hidden="true">
+          <defs>
+            <linearGradient id="triGrad" x1="50" y1="8" x2="50" y2="90" gradientUnits="userSpaceOnUse">
+              <stop offset="0%"   stop-color="#3dffb0"/>
+              <stop offset="100%" stop-color="#0e8f55"/>
+            </linearGradient>
+            <linearGradient id="triGrad2" x1="20" y1="90" x2="80" y2="90" gradientUnits="userSpaceOnUse">
+              <stop offset="0%"   stop-color="#1cc97a"/>
+              <stop offset="100%" stop-color="#3dffb0"/>
+            </linearGradient>
+            <filter id="sglow">
+              <feGaussianBlur stdDeviation="2" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id="sglowStrong">
+              <feGaussianBlur stdDeviation="3.5" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+
+          <polygon points="50,8 92,82 8,82"
+            stroke="url(#triGrad)" stroke-width="4" fill="none"
+            filter="url(#sglow)" stroke-linejoin="round">
+            <animate attributeName="stroke-dasharray"
+              from="0 300" to="300 0" dur="1.2s" begin="0.1s"
+              fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+            <animate attributeName="opacity"
+              values="0.7;1;0.7" dur="3s" begin="1.3s" repeatCount="indefinite"/>
+          </polygon>
+
+          <polygon points="50,30 68,65 32,65"
+            stroke="url(#triGrad2)" stroke-width="3" fill="none"
+            filter="url(#sglow)" stroke-linejoin="round">
+            <animate attributeName="stroke-dasharray"
+              from="0 200" to="200 0" dur="0.9s" begin="0.7s"
+              fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+            <animate attributeName="opacity"
+              values="0.6;1;0.6" dur="2.6s" begin="1.6s" repeatCount="indefinite"/>
+          </polygon>
+
+          <circle cx="50" cy="50" r="3" fill="#3dffb0" filter="url(#sglowStrong)" opacity="0">
+            <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.4s" fill="freeze"/>
+            <animate attributeName="r" values="3;4.5;3" dur="2s" begin="1.7s" repeatCount="indefinite"/>
+          </circle>
+
+          <line x1="8" y1="82" x2="92" y2="82"
+            stroke="url(#triGrad2)" stroke-width="2.5" stroke-linecap="round"
+            filter="url(#sglow)" opacity="0">
+            <animate attributeName="opacity" values="0;0.8" dur="0.4s" begin="1s" fill="freeze"/>
+            <animate attributeName="opacity" values="0.8;0.3;0.8" dur="2.5s" begin="1.5s" repeatCount="indefinite"/>
+          </line>
+
+          <circle cx="50" cy="8" r="2.5" fill="#3dffb0" opacity="0">
+            <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.2s" fill="freeze"/>
+            <animate attributeName="r" values="2.5;4;2.5" dur="3s" begin="2s" repeatCount="indefinite"/>
+          </circle>
+          <circle cx="92" cy="82" r="2.5" fill="#1cc97a" opacity="0">
+            <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.25s" fill="freeze"/>
+          </circle>
+          <circle cx="8" cy="82" r="2.5" fill="#1cc97a" opacity="0">
+            <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.3s" fill="freeze"/>
+          </circle>
+        </svg>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button id="btnOverview" class="sidebar-btn active" title="Portfólio de Usinas">
+          <i class="fa-solid fa-solar-panel"></i>
+        </button>
+        <button id="btnAlarms" class="sidebar-btn" title="Alertas">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+        </button>
+        <button id="btnEvents" class="sidebar-btn" title="Eventos">
+          <i class="fa-solid fa-layer-group"></i>
+        </button>
+        <button id="btnDataStudio" class="sidebar-btn" title="Data Studio">
+          <i class="fa-solid fa-flask-vial"></i>
+        </button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <button id="themeToggleBtn" class="sidebar-btn" title="Alternar tema">
+          <i id="themeIcon" class="fa-solid fa-moon"></i>
+        </button>
+        <button class="sidebar-btn logout-btn" title="Sair" onclick="logout()">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
+      </div>
+    </aside>
+
+    <!-- TELA PRINCIPAL -->
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="plant-name">DASHBOARD</div>
+        </div>
+
+        <!-- ✅ conforme sua imagem: remover Temp/Clock/LastUpdate e manter só status + user -->
+        <div class="topbar-right">
+          <div class="status-pill" id="operatingPill">
+            <span class="status-dot" id="operatingDot"></span>
+            <span id="operatingText">Em operação</span>
+          </div>
+
+          <div class="user-pill">
+            <div class="avatar">IA</div>
+            <span>Operador</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- ✅ RESUMO FIXO NO TOPO (conteúdo centralizado via wrapper interno)
+           - adiciona SVG "no comm" ao lado do OFF
+      -->
+      <section id="topSummary" class="plant-summary-fixed">
+  <!-- ✅ WRAPPER: serve pra centralizar o conteúdo (fundo continua full width) -->
+  <div class="psf-inner">
+    <div class="psf-rated">
+      <div class="psf-rated-label">Rated Power</div>
+      <div class="psf-rated-value" id="psfRatedPower">—</div>
+    </div>
+
+    <div class="psf-active">
+      <div class="psf-active-label">Active Power</div>
+      <div class="psf-active-value" id="psfActivePower">—</div>
+    </div>
+
+    <div class="psf-gauge">
+      <div class="psf-gauge-circle">
+        <span id="psfCapacityPct">—</span>
+      </div>
+    </div>
+
+    <!-- ✅ STATUS: Gen | No comm | Off (todos na mesma faixa) -->
+    <div class="psf-status-icons">
+      <div class="psf-status gen">
+        <img src="./img/gen.svg" alt="Gen" />
+        <span>Gen <span id="countGen">0</span></span>
+      </div>
+
+      <!-- ✅ NO COMM separado (não acoplado no OFF) -->
+      <div class="psf-status nocomm" title="No communication">
+        <svg class="psf-no-comm" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            d="M2 8c5.5-5.3 14.5-5.3 20 0M5 11c3.9-3.7 10.1-3.7 14 0M8 14c2.3-2.2 5.7-2.2 8 0" />
+          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            d="M12 18h.01" />
+          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            d="M4 4l16 16" />
+        </svg>
+        <span>No comm <span id="countNoComm">0</span></span>
+      </div>
+
+      <div class="psf-status off">
+        <svg class="psf-off-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            d="M12 3v9" />
+          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            d="M7.8 5.8a8 8 0 1 0 8.4 0" />
+        </svg>
+        <span>Off <span id="countOff">0</span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+      <section class="content" id="mainContent">
+        <!-- VISÃO GERAL (APENAS PORTFÓLIO) -->
+        <div id="overviewView" class="view-section">
+          <div class="overview-grid">
+            <section class="card portfolio-card">
+              <div class="card-header">
+                <span class="card-title">Portfólio de Usinas</span>
+                <span class="tag">Visão geral</span>
+              </div>
+
+              <div class="portfolio-table-wrapper">
+                <table class="portfolio-table">
+                  <thead>
+                    <tr>
+                      <th>Usina</th>
+                      <th>Rated Power (kWp)</th>
+                      <th>Active Power (kW)</th>
+                      <th>Daily Energy (kWh)</th>
+                      <th>Irradiance (W/m²)</th>
+                      <th>Inverter Availability (%)</th>
+                      <th>Relays Availability (%)</th>
+                      <th>PR (%)</th>
+                      <th style="text-align:center;" title="Abrir usina"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></th>
+                    </tr>
+                  </thead>
+                  <tbody id="portfolioTbody"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <!-- TELA DE ALERTAS -->
+        <div id="alarmsView" class="view-section hidden">
+          <div class="alarms-container expanded">
+            <div class="alarms-tabs">
+              <button class="tab-btn active">ALERTAS</button>
+              <button class="tab-btn">ALERTAS RECONHECIDOS</button>
+            </div>
+
+            <div class="alarms-table-wrapper">
+              <table class="alarms-table">
+                <thead>
+                  <tr>
+                    <th>Pathname</th>
+                    <th>Description</th>
+                    <th>State</th>
+                    <th>Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody id="alarmsTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TELA DE EVENTOS -->
+        <div id="eventsView" class="view-section hidden">
+          <div class="events-container-full">
+            <div class="events-filters-bar">
+              <div class="filter-group">
+                <label>Date</label>
+                <input id="eventsDateInput" type="date" />
+              </div>
+
+              <div class="filter-group">
+                <label>Start time</label>
+                <input id="eventsStartTimeInput" type="time" step="1" placeholder="--:--:--" />
+              </div>
+
+              <div class="filter-group">
+                <label>End time</label>
+                <input id="eventsEndTimeInput" type="time" step="1" placeholder="--:--:--" />
+              </div>
+
+              <div class="filter-group">
+                <label>Equipment</label>
+                <input id="eventsEquipmentInput" type="text" placeholder="Equipment" />
+              </div>
+
+              <div class="filter-group">
+                <label>Point name</label>
+                <input id="eventsPointInput" type="text" placeholder="Point name" />
+              </div>
+
+              <div class="filter-group">
+                <label>Description</label>
+                <input id="eventsDescriptionInput" type="text" placeholder="Description" />
+              </div>
+
+              <div class="filter-group">
+                <label>State</label>
+                <select id="eventsStateSelect">
+                  <option value="all">All</option>
+                  <option value="alarm">Alarm</option>
+                  <option value="event">Event</option>
+                  <option value="status">Status</option>
+                </select>
+              </div>
+
+              <div class="filter-group">
+                <label>Severity</label>
+                <select id="eventsSeveritySelect">
+                  <option value="all">All</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+
+              <div class="filter-actions">
+                <button id="eventsClearBtn" class="btn-clear" type="button">CLEAR</button>
+                <button id="eventsApplyBtn" class="btn-apply" type="button">APPLY</button>
+              </div>
+            </div>
+
+            <div class="events-table-wrapper-full">
+              <table class="events-table-full">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Point</th>
+                    <th>Equipment</th>
+                    <th>Description</th>
+                    <th>State</th>
+                    <th>Severity</th>
+                  </tr>
+                </thead>
+                <tbody id="eventsTbody"></tbody>
+              </table>
+              <div id="eventsPageLabel" style="padding:10px 2px; opacity:.7; font-size:12px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TELA DATA STUDIO (fluxo em etapas) -->
+        <div id="dataStudioView" class="view-section hidden ds-view">
+          <div class="ds-shell card">
+            <div class="ds-page-head">
+              <div>
+                <h2 class="ds-title">Data Studio</h2>
+                <p class="ds-subtitle">Análise visual em etapas: período → medidas → séries</p>
+              </div>
+            </div>
+
+            <div class="ds-hero" id="dsHero">
+              <div class="ds-hero-main">
+                <button id="dsOpenTagsBtn" class="ds-plus-button" type="button" aria-label="Adicionar medidas">+</button>
+
+                <div class="ds-date-range">
+                <label class="ds-field">
+                  <span>Data inicial</span>
+                  <input id="dsStartDateInput" type="date" />
+                </label>
+                <label class="ds-field">
+                  <span>Data final</span>
+                  <input id="dsEndDateInput" type="date" />
+                </label>
+                <label class="ds-field">
+                  <span>Usina</span>
+                  <select id="dsPlantSelect"></select>
+                </label>
+                </div>
+              </div>
+              <div class="ds-hero-meta">
+                <div class="ds-selection-pill"><span>Selecionadas</span><strong id="dsSelectedCountTop">0</strong>/50</div>
+              </div>
+            </div>
+
+            <section id="dsCatalogSection" class="ds-catalog-section" aria-label="Catálogo de medidas">
+              <div class="ds-modal-panel">
+                <div class="ds-modal-header">
+                  <div>
+                    <h3>Medidas</h3>
+                    <p>Filtre e selecione até 50 medidas para análise.</p>
+                  </div>
+                </div>
+
+                <div class="ds-search-row">
+                  <input id="dsSearchInput" type="text" placeholder="Buscar por nome do ponto, pathname ou descrição" />
+                  <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                </div>
+
+                <div class="ds-chip-filters">
+                  <select id="dsDataKindSelect" class="ds-chip-select">
+                    <option value="all">Todos tipos</option>
+                    <option value="analog">Analógico</option>
+                    <option value="discrete">Discreto</option>
+                  </select>
+
+
+                  <select id="dsContextSelect" class="ds-chip-select">
+                    <option value="all">Todos contextos</option>
+                  </select>
+                </div>
+
+                <div class="ds-selection-meta">Selecionadas no catálogo: <strong id="dsSelectedCount">0</strong>/50</div>
+                <div id="dsContextInfo" class="ds-context-info hidden"></div>
+
+                <div class="ds-modal-table-wrap">
+                  <table class="ds-table">
+                    <thead>
+                      <tr>
+                        <th></th>
+                        <th>Pathname</th>
+                        <th>Descrição</th>
+                        <th>Origem</th>
+                        <th>Tipo</th>
+                        <th>Unidade</th>
+                        <th>Contexto</th>
+                        <th>Plant ID</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dsTagsTbody"></tbody>
+                  </table>
+                </div>
+
+                <div class="ds-modal-footer">
+                  <div class="ds-modal-footer__count">Selecionadas: <strong id="dsSelectedCountBottom">0</strong>/50</div>
+                  <div class="ds-modal-actions">
+                    <button id="dsTagsClearBtn" class="btn-clear" type="button">Limpar seleção</button>
+                    <button id="dsTagsApplyBtn" class="btn-clear" type="button">Atualizar catálogo</button>
+                    <button id="dsConfirmSelectionBtn" class="btn-apply" type="button">OK</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <div id="dsEmptyState" class="ds-empty-state">
+              <div class="ds-empty-icon"><i class="fa-solid fa-chart-simple"></i></div>
+              <h3>Nenhuma medida confirmada</h3>
+              <p>Clique no botão +, selecione medidas e confirme em OK para liberar a configuração.</p>
+            </div>
+
+            <div id="dsSelectedTagsList" class="ds-selected-tags"></div>
+
+            <div id="dsWorkspace" class="ds-workspace hidden">
+              <div class="ds-main-grid">
+              <div id="dsBulkPanel" class="ds-bulk-panel">
+                <div class="ds-panel-head">
+                  <button class="ds-back-btn" type="button" id="dsBackToHeroBtn" aria-label="Voltar"><i class="fa-solid fa-chevron-left"></i></button>
+                  <div>
+                    <h3>Configuração</h3>
+                    <p>Ajuste modo, agregação e período consolidado.</p>
+                  </div>
+                </div>
+                <div class="ds-bulk-card">
+                <div class="ds-bulk-card__title"><i class="fa-solid fa-sliders"></i><span>Aplicar em massa</span></div>
+                <div class="ds-bulk-grid">
+                  <label>
+                    <span>Modo</span>
+                    <select id="dsModeSelect">
+                      <option value="historico">Histórico</option>
+                      <option value="consolidado">Consolidado</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    <span>Agregação</span>
+                    <select id="dsAggregationSelect">
+                      <option value="avg">Média</option>
+                      <option value="integral">Integral</option>
+                      <option value="median">Mediana</option>
+                      <option value="max">Máxima</option>
+                      <option value="sum">Soma</option>
+                      <option value="none">Sem agregação</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    <span>Período consolidado</span>
+                    <select id="dsConsolidationSelect">
+                      <option value="5min">5 min</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="yearly">Yearly</option>
+                      <option value="hdaily">HDaily</option>
+                      <option value="hweekly">HWeekly</option>
+                      <option value="hmonthly">HMonthly</option>
+                      <option value="hyearly">HYearly</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="ds-bulk-actions">
+                  <button id="dsSaveSelectionBtn" class="btn-apply" type="button">Salvar seleção</button>
+                  <button id="dsLoadSeriesBtn" class="btn-clear" type="button">Carregar séries</button>
+                </div>
+                </div>
+              </div>
+
+              <div class="ds-chart-card">
+                <div class="ds-chart-card__head">
+                  <div>
+                    <h3>Séries selecionadas</h3>
+                    <p>Visualização temporal das medidas escolhidas.</p>
+                  </div>
+                  <div class="ds-chart-toolbar">
+                    <button id="dsZoomInBtn" class="ds-zoom-btn" title="Zoom in">
+                      <i class="fa-solid fa-plus"></i>
+                    </button>
+                    <button id="dsZoomOutBtn" class="ds-zoom-btn" title="Zoom out">
+                      <i class="fa-solid fa-minus"></i>
+                    </button>
+                    <button id="dsZoomResetBtn" class="ds-zoom-btn ds-zoom-btn--reset" title="Resetar zoom">
+                      <i class="fa-solid fa-rotate-left"></i>
+                    </button>
+                    <button id="dsExportBtn" class="ds-export-btn" title="Exportar CSV" disabled>
+                      <i class="fa-solid fa-file-csv"></i>
+                    </button>
+                  </div>
+                </div>
+                <div class="ds-chart-wrap"><canvas id="dsChart"></canvas></div>
+              </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TELA DE DIAGRAMA (OCULTA DO MENU) -->
+        <div id="diagramView" class="view-section hidden">
+          <div class="card diagram-card-full">
+            <div class="card-header">
+              <span class="card-title">Diagrama Unifilar</span>
+              <span class="tag"><i class="fa-solid fa-bolt"></i> Média Tensão</span>
+            </div>
+            <div class="diagram-content">
+              <img src="img/diagram-placeholder.svg" alt="Diagrama" style="width:100%; opacity:.8;">
+              <div class="diagram-actions">
+                <button class="btn-open-full"><i class="fa-solid fa-expand"></i> Abrir</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+    </main>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

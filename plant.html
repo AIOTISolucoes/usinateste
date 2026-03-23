@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Usina</title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="css/plant.css" />
+  <link rel="stylesheet" href="/css/plant.css" />
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+  />
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+
+<body>
+
+<main class="plant-layout">
+
+  <!-- =================================================
+       HEADER + WEATHER
+  ================================================== -->
+  <section class="card plant-header-card header-grid">
+
+    <!-- RESUMO USINA -->
+    <div class="header-main">
+
+      <div class="card-header plant-header-title">
+
+        <!-- Linha 1: somente a seta -->
+        <button class="back-btn back-btn--modern" onclick="history.back()" aria-label="Voltar">
+          <svg class="back-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M14.5 5L8.5 12L14.5 19"
+                  stroke="currentColor" stroke-width="2.2"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+
+        <!-- Linha 2: plant badge + textos -->
+        <div class="plant-title-row">
+          <span class="plant-badge" aria-hidden="true">
+            <i class="fa-solid fa-seedling"></i>
+          </span>
+
+          <div class="plant-title-text">
+            <h2 class="plant-name" id="plantName">—</h2>
+            <span class="plant-subline" id="plantSubline">Nenhum alarme ativo</span>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="summary-station">
+        <h3 class="weather-title">Resumo da usina</h3>
+        <div class="plant-kpis">
+          <div class="kpi">
+            <div class="kpi-label">Rated Power</div>
+            <strong id="headerRatedPower">—</strong>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Active Power</div>
+            <strong id="headerActivePower">—</strong>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Capacidade</div>
+            <strong id="headerCapacity">—</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WEATHER -->
+    <div class="weather-station">
+      <h3 class="weather-title">Weather Station</h3>
+
+      <div class="weather-items-row">
+        <div class="weather-item">
+          <i class="fa-solid fa-sun weather-icon"></i>
+          <span>Irradiance POA</span>
+          <strong id="weatherIrradiance">—</strong>
+        </div>
+
+        <div class="weather-item">
+          <i class="fa-solid fa-temperature-half weather-icon"></i>
+          <span>Air Temperature</span>
+          <strong id="weatherAirTemp">—</strong>
+        </div>
+
+        <div class="weather-item">
+          <i class="fa-solid fa-microchip weather-icon"></i>
+          <span>Module Temp</span>
+          <strong id="weatherModuleTemp">—</strong>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- =================================================
+       ALARMES
+  ================================================== -->
+  <section class="card plant-alarms-card">
+    <h3 class="card-title">Alarmes Ativos</h3>
+
+    <div id="plantActiveAlarms"></div>
+  </section>
+
+  <!-- =================================================
+       NAV DISPOSITIVOS (BOTÕES CENTRALIZADOS)
+  ================================================== -->
+  <section class="card plant-device-nav-card">
+    <div class="device-nav-wrap">
+      <button class="device-nav-btn" type="button" data-target="#sec-inverters">
+        <i class="fa-solid fa-bolt" aria-hidden="true"></i>
+        <span>Inversores</span>
+      </button>
+
+      <button class="device-nav-btn" type="button" data-target="#sec-relay">
+        <i class="fa-solid fa-tower-broadcast" aria-hidden="true"></i>
+        <span>Relé</span>
+      </button>
+
+      <button class="device-nav-btn" type="button" data-target="#sec-multimeter">
+        <i class="fa-solid fa-gauge-high" aria-hidden="true"></i>
+        <span>Multimedidor</span>
+      </button>
+
+      <button class="device-nav-btn" id="trackersMenuToggle" type="button" data-target="#sec-trackers">
+        <i class="fa-solid fa-satellite-dish" aria-hidden="true"></i>
+        <span>Trackers</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- =================================================
+       GRÁFICOS
+  ================================================== -->
+  <section class="plant-charts-grid">
+
+    <section class="card plant-chart-card">
+      <div class="card-header">
+        <div>
+          <h2>Produção diária</h2>
+
+          <div class="chart-legend">
+            <span class="legend-bars" aria-hidden="true">
+              <span class="bar bar--green"></span>
+              <span class="bar bar--yellow"></span>
+            </span>
+
+            <div class="legend-text">
+              <span class="legend-line legend-line--green">Active Power</span>
+              <span class="legend-line legend-line--yellow">Irradiância</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-wrapper">
+        <canvas id="plantMainChart"></canvas>
+      </div>
+    </section>
+
+    <section class="card plant-chart-card">
+      <div class="card-header">
+        <div>
+          <h2>Geração mensal acumulada</h2>
+          <span class="subtitle">Últimos 30 dias</span>
+        </div>
+      </div>
+
+      <div class="chart-wrapper">
+        <canvas id="plantMonthlyChart"></canvas>
+      </div>
+    </section>
+
+  </section>
+
+  <!-- =================================================
+       DISPOSITIVOS — INVERSORES + RELÉ + TRACKERS
+  ================================================== -->
+  <section class="card plant-devices-card">
+
+    <!-- âncora invisível (com offset pra não ficar atrás do header sticky) -->
+    <div id="sec-inverters" class="scroll-anchor"></div>
+
+    <h3 class="card-title">Inversores</h3>
+
+    <div class="inverters-section">
+
+      <div class="inverter-header">
+        <span></span>
+        <span>Inversor</span>
+        <span>Power</span>
+        <span>Efficiency</span>
+        <span>Temp</span>
+        <span>Freq</span>
+        <span>PR</span>
+        <span>Última leitura</span>
+      </div>
+
+      <div id="invertersContainer"></div>
+
+    </div>
+
+    <!-- âncora invisível -->
+    <div id="sec-relay" class="scroll-anchor"></div>
+
+    <!-- RELÉ -->
+    <section id="relaySection" style="margin-top:24px">
+      <h3 class="card-title">Relé</h3>
+
+      <div class="relay-row" id="relayRow">
+        <span class="status-dot" id="relayDot"></span>
+
+        <div class="relay-left">
+          <div class="relay-title">Relé</div>
+        </div>
+
+        <div class="relay-right">
+          <span class="relay-last" id="relayLastUpdateText">—</span>
+          <span class="relay-state relay-state--unknown" id="relayStateBadge">—</span>
+          <span class="relay-power" id="relayPowerText">— kW</span>
+          <span id="relayOnlineText" style="display:none;">—</span>
+          <span id="relayAvailabilityText" style="display:none;">—</span>
+        </div>
+      </div>
+    </section>
+
+    <div id="sec-multimeter" class="scroll-anchor"></div>
+    <section id="multimeterSection" style="margin-top:24px">
+      <h3 class="card-title">Multimedidor</h3>
+
+      <div class="relay-row" id="multimeterRow">
+        <span class="status-dot" id="multimeterDot"></span>
+
+        <div class="relay-left">
+          <div class="relay-title">Medidor Principal</div>
+        </div>
+
+        <div class="relay-right" id="multimeterRight">
+          <span class="relay-last" id="multimeterLastUpdateText">—</span>
+          <span class="relay-state relay-state--unknown" id="multimeterOnlineBadge">—</span>
+          <span class="relay-power" id="multimeterPowerText">—</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- TRACKERS -->
+    <div id="sec-trackers" class="scroll-anchor"></div>
+    <section id="trackersSection" class="trackers-section is-collapsed trackers-hidden" style="margin-top:24px">
+      <button id="trackersTabToggle" class="trackers-tab-toggle" type="button" aria-expanded="false">
+        <span>Trackers</span>
+        <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+      </button>
+
+      <div id="trackersPanelBody" class="trackers-panel-body">
+      <div class="trackers-toolbar">
+        <h3 class="card-title">Trackers</h3>
+
+        <div class="trackers-search-box">
+          <input id="trackersSearchInput" type="search" placeholder="Buscar tracker por nome, ID ou tipo" />
+        </div>
+
+        <div class="trackers-mode-switch">
+          <button id="trackerModeState" class="tracker-mode-btn is-active" type="button">Estado</button>
+          <button id="trackerModeAngle" class="tracker-mode-btn" type="button">Ângulo</button>
+          <button id="trackerModeError" class="tracker-mode-btn" type="button">Erro</button>
+        </div>
+      </div>
+
+      <div class="trackers-layout">
+        <aside class="trackers-sidebar">
+          <div class="trackers-zoom-controls">
+            <button id="trackersZoomIn" class="tracker-mode-btn" type="button">Zoom +</button>
+            <button id="trackersZoomOut" class="tracker-mode-btn" type="button">Zoom −</button>
+            <button id="trackersZoomReset" class="tracker-mode-btn" type="button">Reset</button>
+          </div>
+
+          <div id="trackersLegend" class="trackers-legend"></div>
+        </aside>
+
+        <div id="trackersStageWrap" class="trackers-stage-wrap">
+          <div id="trackersStage" class="trackers-stage">
+            <div id="trackersGridLayer" class="trackers-grid-layer"></div>
+          </div>
+          <div id="trackerTooltip" class="tracker-tooltip" hidden></div>
+        </div>
+      </div>
+      </div>
+    </section>
+
+  </section>
+
+</main>
+
+<!-- ✅ Navegação sem empilhar histórico -->
+<script>
+  (function deviceNavNoHistory() {
+    const btns = document.querySelectorAll('.device-nav-btn[data-target]');
+    if (!btns.length) return;
+
+    function toggleTrackersMenu() {
+      const trackersSection = document.getElementById('trackersSection');
+      const trackersBtn = document.getElementById('trackersMenuToggle');
+      const trackersTab = document.getElementById('trackersTabToggle');
+      if (!trackersSection) return;
+
+      const isHidden = trackersSection.classList.contains('trackers-hidden');
+      if (isHidden) {
+        trackersSection.classList.remove('trackers-hidden');
+        trackersSection.classList.remove('is-collapsed');
+        trackersTab?.setAttribute('aria-expanded', 'true');
+        trackersSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        trackersSection.classList.add('trackers-hidden');
+      }
+
+      trackersBtn?.classList.toggle('on', isHidden);
+    }
+
+    function scrollToTarget(selector) {
+      if (selector === '#sec-trackers') {
+        toggleTrackersMenu();
+        return;
+      }
+      const el = document.querySelector(selector);
+      if (!el) return;
+
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      try { history.replaceState(null, '', selector); } catch (_) {}
+    }
+
+    btns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const target = btn.getAttribute('data-target');
+        scrollToTarget(target);
+      });
+    });
+
+    if (location.hash) {
+      const hash = location.hash;
+      setTimeout(() => scrollToTarget(hash), 0);
+    }
+  })();
+</script>
+
+<script src="/js/plant.js"></script>
+</body>
+</html>

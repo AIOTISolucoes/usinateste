@@ -1,0 +1,27 @@
+<svg width="400" height="180" viewBox="0 0 400 180" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="180" fill="#151821"/>
+  <g stroke="#d0d4e0" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="40" y1="40" x2="360" y2="40"/>
+    <line x1="200" y1="40" x2="200" y2="80"/>
+    <rect x="188" y="80" width="24" height="24" rx="3"/>
+    <line x1="200" y1="104" x2="200" y2="132"/>
+    <line x1="120" y1="132" x2="280" y2="132"/>
+    <g>
+      <line x1="120" y1="132" x2="120" y2="160"/>
+      <rect x="112" y="160" width="16" height="12"/>
+    </g>
+    <g>
+      <line x1="160" y1="132" x2="160" y2="160"/>
+      <rect x="152" y="160" width="16" height="12"/>
+    </g>
+    <g>
+      <line x1="240" y1="132" x2="240" y2="160"/>
+      <rect x="232" y="160" width="16" height="12"/>
+    </g>
+    <g>
+      <line x1="280" y1="132" x2="280" y2="160"/>
+      <rect x="272" y="160" width="16" height="12"/>
+    </g>
+  </g>
+  <text x="16" y="24" fill="#a0a7b8" font-size="10" font-family="system-ui, sans-serif">Diagrama unifilar - exemplo</text>
+</svg>
