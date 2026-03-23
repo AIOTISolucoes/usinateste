@@ -16,7 +16,6 @@ let PLANT_STATE = {
 // ======================================================
 const INVERTER_ONLINE_AFTER_MS = 15 * 60 * 1000; // 15 min
 const INVERTER_NO_COMM_AFTER_MS = 15 * 60 * 1000; // 15 min
-let REFRESH_RUNNING = false;
 
 // ======================================================
 // FUNÇÕES AUXILIARES
@@ -38,39 +37,6 @@ function formatKwhPtBR(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "—";
   return `${formatNumberPtBR(n)} kWh`;
-}
-
-// ======================================================
-// WEATHER: parse robusto + stale timeout (30 min)
-// ======================================================
-const WEATHER_STALE_AFTER_MS = 30 * 60 * 1000;
-let WEATHER_CACHE = { data: null, ok_ms: 0 };
-
-function toNumOrNull(v) {
-  if (v === null || v === undefined) return null;
-  const s = String(v).trim().replace(",", ".").toLowerCase();
-  if (!s || s === "null" || s === "nan" || s === "undefined") return null;
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
-}
-
-function parseTsToMsSafe(ts) {
-  if (!ts) return 0;
-  const ms = Date.parse(ts);
-  return Number.isFinite(ms) ? ms : 0;
-}
-
-function isWeatherStale(weatherObj) {
-  const ts =
-    weatherObj?.last_update ??
-    weatherObj?.lastUpdate ??
-    weatherObj?.ts ??
-    weatherObj?.timestamp ??
-    null;
-
-  const ms = parseTsToMsSafe(ts);
-  if (!ms) return true;
-  return (Date.now() - ms) > WEATHER_STALE_AFTER_MS;
 }
 
 function buildLastNDaysLabels(n) {
@@ -270,61 +236,47 @@ function normalizeDailyPayload(payload) {
 
   const mins = points.map(p => p.minute).sort((a, b) => a - b);
 
-  let step = 5; // ✅ trava em 5 min (SCADA)
+  // detecta o passo (1,5,10,15...) olhando o menor diff positivo
+  let step = 5; // fallback
+  if (mins.length >= 3) {
+    const diffs = [];
+    for (let i = 1; i < mins.length; i++) {
+      const d = mins[i] - mins[i - 1];
+      if (d > 0 && d <= 60) diffs.push(d);
+    }
+    if (diffs.length) step = Math.max(1, Math.min(...diffs));
+  }
 
   const mapP = new Map();
   const mapI = new Map();
-
-  // ✅ bucket: sempre pro INÍCIO do intervalo (floor), não "round"
-  const toBucket = (minute) => {
-    const b = Math.floor(minute / step) * step;
-    return Math.max(0, Math.min(23 * 60 + 55, b));
-  };
-
-  // ✅ se cair 2+ pontos no mesmo bucket:
-  // - power: mantém o ÚLTIMO (mais recente)
-  // - irradiância: mantém o MAIOR (evita zerar/oscilar)
   points.forEach(p => {
-    const b = toBucket(p.minute);
-
-    // power: último ganha
-    mapP.set(b, p.power);
-
-    // irradiância: não deixa um 0 sobrescrever um valor bom
-    const prevI = mapI.get(b);
-    const nextI = p.irr;
-
-    if (prevI === undefined) {
-      mapI.set(b, nextI);
-    } else {
-      // pega o maior (pico no bucket) e ignora "0" se já tinha algo >0
-      mapI.set(b, Math.max(Number(prevI) || 0, Number(nextI) || 0));
-    }
+    mapP.set(p.minute, p.power);
+    mapI.set(p.minute, p.irr);
   });
 
-  // ✅ vai só até o último bucket com dado (não até 23:55)
+  // começa SEMPRE em 00:00 e termina no último minuto que chegou dado hoje
   const lastMin = Math.max(...mins);
-  const lastBucket = Math.floor(lastMin / step) * step;
 
   const labels = [];
   const activePower = [];
   const irradiance = [];
 
-  let lastIrr = 0;
-
-  for (let m = 0; m <= lastBucket; m += step) {
+  for (let m = 0; m <= lastMin; m += step) {
     const hh = String(Math.floor(m / 60)).padStart(2, "0");
     const mm = String(m % 60).padStart(2, "0");
     labels.push(`${hh}:${mm}`);
 
+    // sem buraco visual: minutos faltantes viram 0
     activePower.push(mapP.has(m) ? mapP.get(m) : 0);
-
-    // irradiância: carry-forward dentro do range
-    if (mapI.has(m)) lastIrr = mapI.get(m);
-    irradiance.push(lastIrr);
+    irradiance.push(mapI.has(m) ? mapI.get(m) : 0);
   }
 
-  return { ...payload, labels, activePower, irradiance };
+  return {
+    ...payload,
+    labels,
+    activePower,
+    irradiance
+  };
 }
 
 
@@ -333,14 +285,10 @@ function normalizeDailyPayload(payload) {
 // ======================================================
 let DAILY = null;
 let MONTHLY = null;
-let LAST_DAILY_FETCH_MS = 0;
-const DAILY_REFRESH_EVERY_MS = 60 * 1000; // 1 min
-let DAILY_DAY_KEY = null;
 let ACTIVE_ALARMS = [];
 let INVERTERS_REALTIME = [];
-let INVERTERS_CACHE = { items: [], ok_ms: 0 };
-const INVERTERS_CACHE_TTL_MS = 2 * 60 * 1000; // 2 min
 let RELAY_REALTIME = null; // ✅ NEW
+let MULTIMETER_REALTIME = null;
 let OPEN_INVERTER_REAL_ID = null;
 let STRINGS_REFRESH_SEQ = 0;
 let INVERTER_EXTRAS_BY_ID = new Map(); // inverter_id (string) -> objeto inv completo
@@ -351,6 +299,7 @@ let PLANT_CATALOG = {
 };
 
 let RELAY_SUPPORTED = null; // null = desconhecido / true / false
+let MULTIMETER_SUPPORTED = null; // null = desconhecido / true / false
 
 const API_BASE = "https://jgeg9i0js1.execute-api.us-east-1.amazonaws.com";
 const PLANT_REFRESH_INTERVAL_MS = 10000;
@@ -473,14 +422,35 @@ async function safeFetchRelayIfSupported(plantId) {
   return payload?.item ?? null;
 }
 
+async function safeFetchMultimeterIfSupported(plantId) {
+  if (MULTIMETER_SUPPORTED === false) return null;
+
+  const url = `${API_BASE}/plants/${plantId}/multimeter/realtime`;
+  const res = await fetch(url, { headers: buildAuthHeaders() });
+
+  if (res.status === 404) {
+    MULTIMETER_SUPPORTED = false;
+    return null;
+  }
+
+  if (!res.ok) {
+    console.warn(`[multimeter/realtime] HTTP ${res.status} em ${url}`);
+    return null;
+  }
+
+  MULTIMETER_SUPPORTED = true;
+  const payload = normalizeApiBody(await res.json());
+  return payload?.item ?? payload ?? null;
+}
+
 function setRelaySectionVisible(visible) {
   const relaySection = document.getElementById("relaySection");
   if (relaySection) relaySection.style.display = visible ? "" : "none";
 }
 
 function setMultimeterSectionVisible(visible) {
-  const multimeterSection = document.getElementById("multimeterSection");
-  if (multimeterSection) multimeterSection.style.display = visible ? "" : "none";
+  const section = document.getElementById("multimeterSection");
+  if (section) section.style.display = visible ? "" : "none";
 }
 
 // ✅ realtime por inversor
@@ -491,41 +461,19 @@ async function fetchInvertersRealtime(plantId) {
   ];
 
   for (const url of candidates) {
-    try {
-      const res = await fetch(url, { headers: buildAuthHeaders() });
-      if (!res.ok) {
-        if (res.status === 404) continue;
-        console.warn(`[inverters realtime] HTTP ${res.status} em ${url}`);
-        continue;
-      }
-
+    const res = await fetch(url, { headers: buildAuthHeaders() });
+    if (res.ok) {
       const data = normalizeApiBody(await res.json());
-      const items = Array.isArray(data) ? data : (data?.items || []);
-
-      // ✅ só atualiza cache se vier algo minimamente válido
-      if (Array.isArray(items) && items.length > 0) {
-        INVERTERS_CACHE = { items, ok_ms: Date.now() };
-        return items;
-      }
-
-      // se vier vazio, NÃO derruba. tenta próximo endpoint.
-    } catch (e) {
-      console.warn(`[inverters realtime] fetch fail ${url}`, e);
+      return Array.isArray(data) ? data : (data?.items || []);
     }
+
+    if (res.status === 404) continue;
+    console.warn(`[inverters realtime] HTTP ${res.status} em ${url}`);
   }
 
-  // ✅ fallback no cache (igual weather)
-  const canUseCache =
-    Array.isArray(INVERTERS_CACHE.items) &&
-    INVERTERS_CACHE.items.length > 0 &&
-    (Date.now() - INVERTERS_CACHE.ok_ms) <= INVERTERS_CACHE_TTL_MS;
-
-  if (canUseCache) return INVERTERS_CACHE.items;
-
-  // último caso: mantém vazio mesmo
+  console.warn("[inverters realtime] nenhum endpoint disponível -> mantendo estático");
   return [];
 }
-
 
 // config (enabled/has_data)
 async function fetchInverterStrings(plantId, inverterRealId) {
@@ -723,9 +671,6 @@ function ensureInverterRowsFromRealtime(inverters) {
   const preservedOpenId = OPEN_INVERTER_REAL_ID;
   const uniq = dedupInvertersById(Array.isArray(inverters) ? inverters : []);
 
-  // ✅ se vier vazio, não limpa o DOM (evita sumir/piscar)
-  if (uniq.length === 0 && container.children.length > 0) return;
-
   uniq.sort((a, b) => {
     const an = String(getInverterDisplayName(a, 0) || "");
     const bn = String(getInverterDisplayName(b, 0) || "");
@@ -872,36 +817,22 @@ function renderWeather(data) {
   const elModule = document.getElementById("weatherModuleTemp");
 
   const hasWeather = !!(data && typeof data === "object");
-  const staleIncoming = !hasWeather || isWeatherStale(data);
 
-  // ✅ se vier bom, atualiza cache
-  if (!staleIncoming) {
-    WEATHER_CACHE = { data, ok_ms: Date.now() };
+  if (elIrr) {
+    const value = hasWeather ? (data.irradiance_poa_wm2 ?? data.irradiance_ghi_wm2) : null;
+    elIrr.textContent = value != null ? `${Number(value).toFixed(0)} W/m²` : "—";
   }
 
-  // ✅ se vier ruim, tenta usar cache (até 30 min)
-  const canUseCache =
-    WEATHER_CACHE.data &&
-    (Date.now() - WEATHER_CACHE.ok_ms) <= WEATHER_STALE_AFTER_MS;
-
-  const src = (!staleIncoming ? data : (canUseCache ? WEATHER_CACHE.data : null));
-
-  if (!src) {
-    if (elIrr) elIrr.textContent = "—";
-    if (elAir) elAir.textContent = "—";
-    if (elModule) elModule.textContent = "—";
-    return;
+  if (elAir) {
+    const value = hasWeather ? data.air_temperature_c : null;
+    elAir.textContent = value != null ? `${Number(value).toFixed(1)} °C` : "—";
   }
 
-  const irr = toNumOrNull(src.irradiance_poa_wm2) ?? toNumOrNull(src.irradiance_ghi_wm2);
-  const air = toNumOrNull(src.air_temperature_c);
-  const module = toNumOrNull(src.module_temperature_c);
-
-  if (elIrr) elIrr.textContent = irr != null ? `${irr.toFixed(0)} W/m²` : "—";
-  if (elAir) elAir.textContent = air != null ? `${air.toFixed(1)} °C` : "—";
-  if (elModule) elModule.textContent = module != null ? `${module.toFixed(1)} °C` : "—";
+  if (elModule) {
+    const value = hasWeather ? data.module_temperature_c : null;
+    elModule.textContent = value != null ? `${Number(value).toFixed(1)} °C` : "—";
+  }
 }
-
 
 // ======================================================
 // RENDER — ALARMES ATIVOS
@@ -1104,6 +1035,48 @@ function renderRelayCard(relayItem) {
 
   // timestamp
   tsEl.textContent = `Última atualização: ${fmtDatePtBR(lastUpdate)}`;
+}
+
+function renderMultimeterCard(item) {
+  const row = document.getElementById("multimeterRow");
+  if (!row) return;
+
+  const dot = document.getElementById("multimeterDot");
+  const ts = document.getElementById("multimeterLastUpdateText");
+  const onlineBadge = document.getElementById("multimeterOnlineBadge");
+  const powerText = document.getElementById("multimeterPowerText");
+
+  if (!item) {
+    row.classList.remove("online", "offline");
+    row.classList.add("offline");
+    if (onlineBadge) onlineBadge.textContent = "—";
+    if (powerText) powerText.textContent = "—";
+    if (ts) ts.textContent = "—";
+    if (dot) dot.style.opacity = "0.65";
+    return;
+  }
+
+  const analog = item?.analog ?? item?.data ?? {};
+  const isOnline = item.is_online === true || item.online === true;
+  const pKw = analog.active_power_kw ?? analog.p_kw ?? analog.power_kw ?? analog.active_power;
+  const pf = analog.power_factor ?? analog.pf;
+  const hz = analog.frequency_hz ?? analog.hz ?? analog.frequency;
+  const lastUpdate = item.last_update ?? item.timestamp ?? null;
+
+  row.classList.remove("online", "offline");
+  row.classList.add(isOnline ? "online" : "offline");
+
+  if (onlineBadge) {
+    onlineBadge.textContent = isOnline ? "ONLINE" : "OFFLINE";
+    onlineBadge.classList.remove("relay-state--on", "relay-state--off", "relay-state--unknown");
+    onlineBadge.classList.add(isOnline ? "relay-state--on" : "relay-state--off");
+  }
+
+  const pText = Number.isFinite(Number(pKw)) ? `${numFixedOrDash(pKw, 1)} kW` : "— kW";
+  const pfText = Number.isFinite(Number(pf)) ? `PF ${numFixedOrDash(pf, 2)}` : "PF —";
+  const hzText = Number.isFinite(Number(hz)) ? `${numFixedOrDash(hz, 2)} Hz` : "— Hz";
+  if (powerText) powerText.textContent = `${pText} • ${pfText} • ${hzText}`;
+  if (ts) ts.textContent = fmtDatePtBR(lastUpdate);
 }
 
 // ======================================================
@@ -1503,44 +1476,6 @@ let dailyChartInstance = null;
 let monthlyChartInstance = null;
 let LAST_INVERTER_ROWS_SIGNATURE = "";
 
-function dayKeySPNow() {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-}
-
-async function refreshDailyChartIfNeeded(force = false) {
-  const now = Date.now();
-
-  const todayKey = dayKeySPNow();
-  if (DAILY_DAY_KEY !== todayKey) {
-    // ✅ virou o dia: reseta e força reload
-    DAILY_DAY_KEY = todayKey;
-    DAILY = null;
-    force = true;
-    if (dailyChartInstance) {
-      dailyChartInstance.destroy();
-      dailyChartInstance = null;
-    }
-  }
-
-  if (!force && (now - LAST_DAILY_FETCH_MS) < DAILY_REFRESH_EVERY_MS) return;
-  LAST_DAILY_FETCH_MS = now;
-
-  const daily = await fetchDailyEnergy(PLANT_ID);
-  if (daily?.labels?.length) {
-    DAILY = normalizeDailyPayload(daily);
-
-    // ✅ se já existe chart, só atualiza dataset (mais leve)
-    if (dailyChartInstance) {
-      dailyChartInstance.data.labels = DAILY.labels;
-      dailyChartInstance.data.datasets[0].data = DAILY.activePower;
-      dailyChartInstance.data.datasets[1].data = DAILY.irradiance;
-      dailyChartInstance.update("none");
-    } else {
-      renderDailyChart();
-    }
-  }
-}
-
 // ======================================================
 // GRÁFICO DIÁRIO
 // ======================================================
@@ -1578,7 +1513,7 @@ function renderDailyChart() {
           pointRadius: 0,
           borderWidth: 2,
           yAxisID: "yPower",
-          spanGaps: false
+          spanGaps: true
         },
         {
           data: DAILY.irradiance,
@@ -1589,7 +1524,7 @@ function renderDailyChart() {
           pointRadius: 0,
           borderWidth: 2,
           yAxisID: "yIrr",
-          spanGaps: false
+          spanGaps: true
         }
       ]
     },
@@ -1827,8 +1762,6 @@ async function refreshOpenStringsPanels() {
 }
 
 function renderPlantName(realtime) {
-  if (!realtime || typeof realtime !== "object") return;
-
   const name =
     realtime?.power_plant_name ??
     realtime?.powerPlantName ??
@@ -1845,20 +1778,8 @@ function renderPlantName(realtime) {
 // ✅ REFRESH (realtime + alarms + inverters rows + strings abertas + relay)
 // ======================================================
 async function refreshRealtimeEverything() {
-  if (REFRESH_RUNNING) return;
-  REFRESH_RUNNING = true;
-
-  let realtime = null;
-  let alarms = [];
-  let inverters = [];
-  let relayItem = null;
-
   try {
-    try { realtime = await fetchPlantRealtime(PLANT_ID); } catch (e) { console.warn("[realtime] fail", e); }
-    try { alarms = await fetchActiveAlarms(PLANT_ID); } catch (e) { console.warn("[alarms] fail", e); }
-    try { inverters = await fetchInvertersRealtime(PLANT_ID); } catch (e) { console.warn("[inverters] fail", e); }
-    try { relayItem = await safeFetchRelayIfSupported(PLANT_ID); } catch (e) { console.warn("[relay] fail", e); }
-
+    const realtime = await fetchPlantRealtime(PLANT_ID);
     renderPlantName(realtime);
 
     if (realtime) {
@@ -1875,10 +1796,11 @@ async function refreshRealtimeEverything() {
       };
     }
 
-    ACTIVE_ALARMS = Array.isArray(alarms) ? alarms : [];
+    ACTIVE_ALARMS = await fetchActiveAlarms(PLANT_ID);
     renderAlarms(ACTIVE_ALARMS);
 
-    INVERTERS_REALTIME = Array.isArray(inverters) ? inverters : [];
+    INVERTERS_REALTIME = await fetchInvertersRealtime(PLANT_ID);
+    // ✅ guarda os extras por inverter_id (pra render abaixo das strings)
     INVERTER_EXTRAS_BY_ID = new Map();
     dedupInvertersById(INVERTERS_REALTIME).forEach(inv => {
       const id = getInverterRealId(inv);
@@ -1886,6 +1808,7 @@ async function refreshRealtimeEverything() {
     });
 
     const dedup = dedupInvertersById(INVERTERS_REALTIME);
+
     PLANT_CATALOG.inverters = dedup;
     PLANT_STATE = {
       ...PLANT_STATE,
@@ -1897,28 +1820,333 @@ async function refreshRealtimeEverything() {
     renderInvertersRows(INVERTERS_REALTIME);
     refreshInverterStatusChips(INVERTERS_REALTIME);
 
+    const relayItem = await safeFetchRelayIfSupported(PLANT_ID);
     RELAY_REALTIME = relayItem;
     PLANT_CATALOG.hasRelay = !!relayItem;
     setRelaySectionVisible(RELAY_SUPPORTED !== false);
     if (RELAY_SUPPORTED !== false) renderRelayCard(relayItem);
 
+    const multimeterItem = await safeFetchMultimeterIfSupported(PLANT_ID);
+    MULTIMETER_REALTIME = multimeterItem;
+    setMultimeterSectionVisible(MULTIMETER_SUPPORTED !== false);
+    if (MULTIMETER_SUPPORTED !== false) renderMultimeterCard(multimeterItem);
+
     renderHeaderSummary();
     renderWeather(realtime?.weather ?? null);
     renderSummaryStrip();
 
-    try { await refreshOpenStringsPanels(); } catch (e) { console.warn("[strings] fail", e); }
+    await refreshOpenStringsPanels();
 
+    // ✅ se tiver inversor aberto, renderiza os chips amarelos abaixo das strings
     if (OPEN_INVERTER_REAL_ID != null) {
       const inv = INVERTER_EXTRAS_BY_ID.get(String(OPEN_INVERTER_REAL_ID));
       renderInverterExtras(OPEN_INVERTER_REAL_ID, inv);
     }
-
-    try { await refreshDailyChartIfNeeded(false); } catch(e) { console.warn("[daily] fail", e); }
-  } finally {
-    REFRESH_RUNNING = false;
+  } catch (e) {
+    console.error("[refreshRealtimeEverything] erro", e);
+    renderHeaderSummary();
+    renderSummaryStrip();
   }
 }
 
+// ======================================================
+// TRACKERS (MOCK LOCAL) — MÓDULO INDEPENDENTE
+// ======================================================
+let TRACKER_VIEW_MODE = "state";
+let TRACKERS_DATA = [];
+let TRACKERS_FILTER_TEXT = "";
+let TRACKERS_TRANSFORM = { scale: 1, x: 0, y: 0 };
+
+function createMockTrackers(count = 220) {
+  const items = [];
+  const cols = 22;
+  const spacingX = 65;
+  const spacingY = 78;
+  const states = [
+    "off",
+    "manual_daytime",
+    "auto_daytime",
+    "manual_tracking",
+    "auto_tracking",
+    "manual_nighttime",
+    "auto_nighttime",
+    "manual_sleep",
+    "auto_sleep"
+  ];
+
+  for (let i = 0; i < count; i++) {
+    const row = Math.floor(i / cols);
+    const col = i % cols;
+    const offline = i % 17 === 0;
+    const stateCode = offline ? "no_comm" : states[i % states.length];
+    const angle = offline ? null : -60 + ((i * 7) % 131);
+    const error = offline ? null : Number(((i * 1.7) % 11).toFixed(1));
+
+    items.push({
+      id: `TRK-${String(i + 1).padStart(4, "0")}`,
+      name: `Tracker ${String(i + 1).padStart(3, "0")}`,
+      kind: i % 2 === 0 ? "tcu" : "rsu",
+      x: 50 + col * spacingX + (row % 2 ? 12 : 0),
+      y: 45 + row * spacingY,
+      state_code: stateCode,
+      angle_deg: angle,
+      error_value: error,
+      is_online: !offline
+    });
+  }
+  return items;
+}
+
+function getTrackersLegendItems(mode) {
+  if (mode === "state") {
+    return [
+      ["tracker desligado", "#707b86"],
+      ["manual + daytime", "#f6bd60"],
+      ["automático + daytime", "#f2e85e"],
+      ["manual + tracking", "#4f9dff"],
+      ["automático + tracking", "#2ad37f"],
+      ["manual + nighttime", "#7f8cff"],
+      ["automático + nighttime", "#6375ff"],
+      ["manual sleep", "#b47dff"],
+      ["automático sleep", "#9255ff"],
+      ["sem comunicação", "#4a5057"]
+    ];
+  }
+
+  if (mode === "angle") {
+    return [
+      ["-60 a -50", "#7b1fa2"],
+      ["-50 a -40", "#5c2dd6"],
+      ["-40 a -30", "#3949ab"],
+      ["-30 a -20", "#1e88e5"],
+      ["-20 a -10", "#00acc1"],
+      ["-10 a 0", "#26a69a"],
+      ["0 a 10", "#43a047"],
+      ["10 a 20", "#7cb342"],
+      ["20 a 30", "#c0ca33"],
+      ["30 a 40", "#fdd835"],
+      ["40 a 50", "#ffb300"],
+      ["50 a 60", "#fb8c00"],
+      ["60 a 70", "#ef6c00"],
+      ["sem comunicação", "#4a5057"]
+    ];
+  }
+
+  return [
+    ["erro <= 5", "#2ad37f"],
+    ["erro > 5", "#ff8a65"],
+    ["offline", "#4a5057"]
+  ];
+}
+
+function getTrackerColorByMode(item, mode) {
+  if (!item?.is_online) return "#4a5057";
+
+  if (mode === "state") {
+    const map = {
+      off: "#707b86",
+      manual_daytime: "#f6bd60",
+      auto_daytime: "#f2e85e",
+      manual_tracking: "#4f9dff",
+      auto_tracking: "#2ad37f",
+      manual_nighttime: "#7f8cff",
+      auto_nighttime: "#6375ff",
+      manual_sleep: "#b47dff",
+      auto_sleep: "#9255ff",
+      no_comm: "#4a5057"
+    };
+    return map[item.state_code] || "#8a949d";
+  }
+
+  if (mode === "angle") {
+    const a = Number(item.angle_deg);
+    if (!Number.isFinite(a)) return "#4a5057";
+    const ranges = [
+      [-60, -50, "#7b1fa2"], [-50, -40, "#5c2dd6"], [-40, -30, "#3949ab"],
+      [-30, -20, "#1e88e5"], [-20, -10, "#00acc1"], [-10, 0, "#26a69a"],
+      [0, 10, "#43a047"], [10, 20, "#7cb342"], [20, 30, "#c0ca33"],
+      [30, 40, "#fdd835"], [40, 50, "#ffb300"], [50, 60, "#fb8c00"], [60, 70, "#ef6c00"]
+    ];
+    const found = ranges.find(([lo, hi]) => a >= lo && a < hi);
+    return found ? found[2] : "#ef6c00";
+  }
+
+  const err = Number(item.error_value);
+  if (!Number.isFinite(err)) return "#4a5057";
+  return err <= 5 ? "#2ad37f" : "#ff8a65";
+}
+
+function renderTrackersLegend() {
+  const legendEl = document.getElementById("trackersLegend");
+  if (!legendEl) return;
+  const items = getTrackersLegendItems(TRACKER_VIEW_MODE);
+  legendEl.innerHTML = items
+    .map(([label, color]) => `
+      <div class="trackers-legend-item">
+        <span class="trackers-legend-dot" style="background:${color}"></span>
+        <span>${label}</span>
+      </div>
+    `)
+    .join("");
+}
+
+function applyTrackersTransform() {
+  const stageEl = document.getElementById("trackersStage");
+  if (!stageEl) return;
+  const { x, y, scale } = TRACKERS_TRANSFORM;
+  stageEl.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+}
+
+function renderTrackersNodes() {
+  const layerEl = document.getElementById("trackersGridLayer");
+  if (!layerEl) return;
+
+  const filterText = TRACKERS_FILTER_TEXT.trim().toLowerCase();
+  const filtered = TRACKERS_DATA.filter((t) => {
+    if (!filterText) return true;
+    const hay = `${t.name} ${t.id} ${t.kind}`.toLowerCase();
+    return hay.includes(filterText);
+  });
+
+  layerEl.innerHTML = "";
+  filtered.forEach((tracker) => {
+    const node = document.createElement("button");
+    node.type = "button";
+    node.className = "tracker-node";
+    node.style.left = `${tracker.x}px`;
+    node.style.top = `${tracker.y}px`;
+    node.style.background = getTrackerColorByMode(tracker, TRACKER_VIEW_MODE);
+    node.dataset.trackerId = tracker.id;
+
+    node.addEventListener("mouseenter", (ev) => {
+      const tooltip = document.getElementById("trackerTooltip");
+      const stageWrap = document.getElementById("trackersStageWrap");
+      if (!tooltip || !stageWrap) return;
+      tooltip.hidden = false;
+      tooltip.innerHTML = `
+        <strong>${tracker.name}</strong><br>
+        ID: ${tracker.id}<br>
+        Tipo: ${String(tracker.kind).toUpperCase()}<br>
+        Estado: ${tracker.state_code}<br>
+        Ângulo: ${tracker.angle_deg ?? "—"}<br>
+        Erro: ${tracker.error_value ?? "—"}<br>
+        Status: ${tracker.is_online ? "online" : "offline"}
+      `;
+      const wrapRect = stageWrap.getBoundingClientRect();
+      tooltip.style.left = `${ev.clientX - wrapRect.left + 14}px`;
+      tooltip.style.top = `${ev.clientY - wrapRect.top + 14}px`;
+    });
+
+    node.addEventListener("mousemove", (ev) => {
+      const tooltip = document.getElementById("trackerTooltip");
+      const stageWrap = document.getElementById("trackersStageWrap");
+      if (!tooltip || !stageWrap) return;
+      const wrapRect = stageWrap.getBoundingClientRect();
+      tooltip.style.left = `${ev.clientX - wrapRect.left + 14}px`;
+      tooltip.style.top = `${ev.clientY - wrapRect.top + 14}px`;
+    });
+
+    node.addEventListener("mouseleave", () => {
+      const tooltip = document.getElementById("trackerTooltip");
+      if (tooltip) tooltip.hidden = true;
+    });
+
+    layerEl.appendChild(node);
+  });
+}
+
+function renderTrackersPanel() {
+  renderTrackersLegend();
+  renderTrackersNodes();
+  applyTrackersTransform();
+}
+
+function setTrackerMode(mode) {
+  TRACKER_VIEW_MODE = mode;
+  document.getElementById("trackerModeState")?.classList.toggle("is-active", mode === "state");
+  document.getElementById("trackerModeAngle")?.classList.toggle("is-active", mode === "angle");
+  document.getElementById("trackerModeError")?.classList.toggle("is-active", mode === "error");
+  renderTrackersPanel();
+}
+
+function filterTrackers(searchText) {
+  TRACKERS_FILTER_TEXT = searchText || "";
+  renderTrackersNodes();
+}
+
+function initTrackersPanel() {
+  const sectionEl = document.getElementById("trackersSection");
+  const stageWrapEl = document.getElementById("trackersStageWrap");
+  if (!sectionEl || !stageWrapEl) return;
+  const tabToggleEl = document.getElementById("trackersTabToggle");
+
+  if (tabToggleEl) {
+    tabToggleEl.addEventListener("click", () => {
+      sectionEl.classList.toggle("is-collapsed");
+      const expanded = !sectionEl.classList.contains("is-collapsed");
+      tabToggleEl.setAttribute("aria-expanded", expanded ? "true" : "false");
+      if (expanded) applyTrackersTransform();
+    });
+  }
+
+  TRACKERS_DATA = createMockTrackers();
+  TRACKERS_TRANSFORM = { scale: 0.52, x: 18, y: 18 };
+
+  document.getElementById("trackerModeState")?.addEventListener("click", () => setTrackerMode("state"));
+  document.getElementById("trackerModeAngle")?.addEventListener("click", () => setTrackerMode("angle"));
+  document.getElementById("trackerModeError")?.addEventListener("click", () => setTrackerMode("error"));
+  document.getElementById("trackersSearchInput")?.addEventListener("input", (e) => filterTrackers(e.target.value));
+
+  document.getElementById("trackersZoomIn")?.addEventListener("click", () => {
+    TRACKERS_TRANSFORM.scale = Math.min(2.5, TRACKERS_TRANSFORM.scale + 0.12);
+    applyTrackersTransform();
+  });
+  document.getElementById("trackersZoomOut")?.addEventListener("click", () => {
+    TRACKERS_TRANSFORM.scale = Math.max(0.3, TRACKERS_TRANSFORM.scale - 0.12);
+    applyTrackersTransform();
+  });
+  document.getElementById("trackersZoomReset")?.addEventListener("click", () => {
+    TRACKERS_TRANSFORM = { scale: 0.52, x: 18, y: 18 };
+    applyTrackersTransform();
+  });
+
+  let isPanning = false;
+  let panStartX = 0;
+  let panStartY = 0;
+  let startX = 0;
+  let startY = 0;
+
+  stageWrapEl.addEventListener("mousedown", (ev) => {
+    if (ev.button !== 0) return;
+    isPanning = true;
+    panStartX = ev.clientX;
+    panStartY = ev.clientY;
+    startX = TRACKERS_TRANSFORM.x;
+    startY = TRACKERS_TRANSFORM.y;
+    document.getElementById("trackersStage")?.classList.add("is-panning");
+  });
+
+  window.addEventListener("mousemove", (ev) => {
+    if (!isPanning) return;
+    TRACKERS_TRANSFORM.x = startX + (ev.clientX - panStartX);
+    TRACKERS_TRANSFORM.y = startY + (ev.clientY - panStartY);
+    applyTrackersTransform();
+  });
+
+  window.addEventListener("mouseup", () => {
+    isPanning = false;
+    document.getElementById("trackersStage")?.classList.remove("is-panning");
+  });
+
+  stageWrapEl.addEventListener("wheel", (ev) => {
+    ev.preventDefault();
+    const delta = ev.deltaY > 0 ? -0.08 : 0.08;
+    TRACKERS_TRANSFORM.scale = Math.max(0.3, Math.min(2.5, TRACKERS_TRANSFORM.scale + delta));
+    applyTrackersTransform();
+  }, { passive: false });
+
+  renderTrackersPanel();
+}
 
 // ======================================================
 // INIT
@@ -1926,14 +2154,15 @@ async function refreshRealtimeEverything() {
 document.addEventListener("DOMContentLoaded", async () => {
   document.body.classList.add("plant-enter");
   setTimeout(() => document.body.classList.remove("plant-enter"), 500);
+  setupInverterToggles();
+  initTrackersPanel();
+
   if (!PLANT_ID) {
     console.warn("[plant] plant_id ausente na URL; mantendo tela sem dados de fallback.");
     renderHeaderSummary();
     renderSummaryStrip();
     return;
   }
-  setupInverterToggles();
-  setMultimeterSectionVisible(false);
 
   try {
     await refreshRealtimeEverything();
@@ -1949,7 +2178,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     }
 
-    await refreshDailyChartIfNeeded(true);
+    // ✅ DAILY: normaliza para sempre começar em 00:00
+    const daily = await fetchDailyEnergy(PLANT_ID);
+    if (daily?.labels?.length) {
+      DAILY = normalizeDailyPayload(daily);
+      renderDailyChart();
+    }
 
     const monthlyRaw = await fetchMonthlyEnergy(PLANT_ID);
     if (monthlyRaw) {
