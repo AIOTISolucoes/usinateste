@@ -21,7 +21,7 @@ function logout() {
 // =============================================================================
 // API FETCH COM CONTEXTO DO USUÁRIO LOGADO
 // =============================================================================
-const API_BASE = "https://evwdyzzfri.execute-api.us-east-1.amazonaws.com";
+const API_BASE = "https://jgeg9i0js1.execute-api.us-east-1.amazonaws.com";
 const INVERTER_NO_COMM_AFTER_MS = 15 * 60 * 1000; // legado (chips usam status do mart)
 const DASHBOARD_REFRESH_INTERVAL_MS = 10000;
 const EVENTS_REFRESH_INTERVAL_MS = 10000;
