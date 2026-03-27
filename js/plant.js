@@ -16,6 +16,7 @@ let PLANT_STATE = {
 // ======================================================
 const INVERTER_ONLINE_AFTER_MS = 15 * 60 * 1000; // 15 min
 const INVERTER_NO_COMM_AFTER_MS = 15 * 60 * 1000; // 15 min
+const STRING_STALE_AFTER_MS = 15 * 60 * 1000;
 
 // ======================================================
 // FUNÇÕES AUXILIARES
@@ -199,12 +200,12 @@ function normalizeDailyPayload(payload) {
     return hh * 60 + mm;
   };
 
-  const dateKeyInSaoPaulo = (d) => {
+  const dateKeyInFortaleza = (d) => {
     if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
-    return d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    return d.toLocaleDateString("en-CA", { timeZone: "America/Fortaleza" });
   };
 
-  const todayKeySP = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  const todayKeyFortaleza = new Date().toLocaleDateString("en-CA", { timeZone: "America/Fortaleza" });
 
   const points = [];
   for (let i = 0; i < labelsRaw.length; i++) {
@@ -214,8 +215,8 @@ function normalizeDailyPayload(payload) {
     if (hasPointTimestamps) {
       const ts = pointTsRaw[i];
       const d = ts ? new Date(ts) : null;
-      const key = dateKeyInSaoPaulo(d);
-      if (!key || key !== todayKeySP) continue;
+      const key = dateKeyInFortaleza(d);
+      if (!key || key !== todayKeyFortaleza) continue;
     }
 
     points.push({
@@ -291,6 +292,7 @@ let RELAY_REALTIME = null; // ✅ NEW
 let MULTIMETER_REALTIME = null;
 let OPEN_INVERTER_REAL_ID = null;
 let STRINGS_REFRESH_SEQ = 0;
+let IS_REFRESHING_PLANT = false;
 let INVERTER_EXTRAS_BY_ID = new Map(); // inverter_id (string) -> objeto inv completo
 
 let PLANT_CATALOG = {
@@ -301,7 +303,7 @@ let PLANT_CATALOG = {
 let RELAY_SUPPORTED = null; // null = desconhecido / true / false
 let MULTIMETER_SUPPORTED = null; // null = desconhecido / true / false
 
-const API_BASE = "https://jgeg9i0js1.execute-api.us-east-1.amazonaws.com";
+const API_BASE = "https://evwdyzzfri.execute-api.us-east-1.amazonaws.com";
 const PLANT_REFRESH_INTERVAL_MS = 10000;
 const PLANT_ID = new URLSearchParams(window.location.search).get("plant_id");
 
@@ -385,6 +387,35 @@ async function fetchActiveAlarms(plantId) {
   return normalizeApiBody(data);
 }
 
+async function fetchTrackersRealtime(plantId) {
+  const res = await fetch(`${API_BASE}/plants/${plantId}/trackers/realtime`, {
+    headers: buildAuthHeaders()
+  });
+
+  if (res.status === 404) {
+    console.warn("[trackers/realtime] 404");
+    return { items: [], plant_center: null, plant_bounds: null };
+  }
+
+  if (!res.ok) {
+    console.warn(`[trackers/realtime] HTTP ${res.status}`);
+    return [];
+  }
+
+  const raw = await res.json();
+  const data = normalizeApiBody(raw);
+  if (Array.isArray(data)) return { items: data, plant_center: null, plant_bounds: null };
+  const items =
+    Array.isArray(data?.items) ? data.items :
+    Array.isArray(data?.trackers) ? data.trackers :
+    Array.isArray(data?.item) ? data.item : [];
+  return {
+    items,
+    plant_center: data?.plant_center ?? null,
+    plant_bounds: data?.plant_bounds ?? null
+  };
+}
+
 async function fetchDailyEnergy(plantId) {
   const res = await fetch(`${API_BASE}/plants/${plantId}/energy/daily`, {
     headers: buildAuthHeaders()
@@ -451,6 +482,26 @@ function setRelaySectionVisible(visible) {
 function setMultimeterSectionVisible(visible) {
   const section = document.getElementById("multimeterSection");
   if (section) section.style.display = visible ? "" : "none";
+}
+
+function setTrackersSectionVisible(visible) {
+  const section = document.getElementById("trackersSection");
+  const btn = document.getElementById("trackersMenuToggle");
+  if (!section) return;
+  section.classList.toggle("trackers-hidden", !visible);
+  if (btn) btn.classList.toggle("on", visible);
+}
+
+function setTrackersCollapsed(collapsed) {
+  const section = document.getElementById("trackersSection");
+  const tabToggleEl = document.getElementById("trackersTabToggle");
+  if (!section) return;
+
+  section.classList.toggle("is-collapsed", !!collapsed);
+
+  if (tabToggleEl) {
+    tabToggleEl.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  }
 }
 
 // ✅ realtime por inversor
@@ -861,11 +912,20 @@ function renderAlarms(alarms) {
   alarms.forEach(a => {
     const row = document.createElement("div");
     row.className = `alarm-row ${a.severity || ""}`.trim();
+    const deviceType =
+      a.device_type ??
+      a.device_type_name ??
+      a.event_source ??
+      "—";
+    const when =
+      a.started_at ??
+      a.timestamp ??
+      null;
 
     row.innerHTML = `
-      <span>${a.device_type || "—"} • ${a.device_name || "—"}</span>
+      <span>${deviceType} • ${a.device_name || "—"}</span>
       <span>${a.event_name || (a.event_code != null ? `Evento ${a.event_code}` : "—")}</span>
-      <span>${a.started_at ? new Date(a.started_at).toLocaleString() : "—"}</span>
+      <span>${when ? new Date(when).toLocaleString("pt-BR") : "—"}</span>
     `;
 
     container.appendChild(row);
@@ -880,7 +940,7 @@ function ensureRelayUiScaffold() {
   const relayRow = document.getElementById("relayRow");
   if (!relayRow) return null;
 
-  const nameEl = relayRow.querySelector(".device-name");
+  const nameEl = relayRow.querySelector(".relay-left");
   const dotEl = document.getElementById("relayDot") || relayRow.querySelector(".status-dot");
 
   // Remove “extras antigos” visualmente (não remove do DOM, só não usa)
@@ -1234,14 +1294,30 @@ function mergeStringsPayload(configPayload, realtimePayload, inverterRealId) {
     const rt = rtMap.get(i);
 
     const enabled = cfg ? !!cfg.enabled : true;
+    const disabledByPref = isDisabledPref(inverterRealId, i);
+    const effective_enabled = disabledByPref ? false : !!enabled;
     const has_data = (rt?.has_data ?? cfg?.has_data ?? false) === true;
+    const exists_in_config = !!cfg;
+    const exists_in_realtime = !!rt;
+    const exists_in_api = exists_in_config || exists_in_realtime;
+
+    const monitorable = exists_in_api && effective_enabled;
 
     strings.push({
       string_index: i,
+      exists_in_config,
+      exists_in_realtime,
+      exists_in_api,
       enabled,
+      effective_enabled,
       has_data,
       current_a: rt?.current_a ?? null,
-      last_ts: rt?.last_ts ?? null
+      last_ts: rt?.last_ts ?? null,
+      monitorable,
+      alarm_active: rt?.alarm_active ?? cfg?.alarm_active ?? null,
+      alarm_state: rt?.alarm_state ?? cfg?.alarm_state ?? null,
+      alarm_reason: rt?.alarm_reason ?? cfg?.alarm_reason ?? null,
+      alarm_code: rt?.alarm_code ?? cfg?.alarm_code ?? null
     });
   }
 
@@ -1250,6 +1326,59 @@ function mergeStringsPayload(configPayload, realtimePayload, inverterRealId) {
     max_strings: maxStrings,
     strings
   };
+}
+
+function isStringMonitorable(str) {
+  if (!str) return false;
+  if (str.effective_enabled === false) return false;
+  if (str.exists_in_api !== true) return false;
+  return str.monitorable === true;
+}
+
+function getInverterOnlineStateById(inverterRealId) {
+  const inv = INVERTER_EXTRAS_BY_ID.get(String(inverterRealId));
+  if (!inv) return false;
+  return isOnlineByFreshness(inv) && !isZeroSnapshot(inv);
+}
+
+function isStringInAlarm(str, inverterOnline) {
+  if (!isStringMonitorable(str)) return false;
+  if (!inverterOnline) return false;
+
+  // futura integração backend: quando alarm_active vier pronto, ele manda na regra local.
+  if (str.alarm_active === true) return true;
+  if (str.alarm_active === false) return false;
+
+  const noData = str.has_data !== true;
+  const nullCurrent = str.current_a === null || str.current_a === undefined || str.current_a === "";
+
+  let stale = false;
+  if (str.last_ts) {
+    const ts = new Date(str.last_ts);
+    if (!Number.isNaN(ts.getTime())) {
+      stale = (Date.now() - ts.getTime()) > STRING_STALE_AFTER_MS;
+    }
+  }
+
+  return noData || nullCurrent || stale;
+}
+
+function setInverterStringAlarmBadge(inverterRealId, show) {
+  const row = document.querySelector(`.inverter-toggle[data-inverter-real-id="${inverterRealId}"]`);
+  if (!row) return;
+  row.classList.toggle("has-string-alarm", !!show);
+
+  let badge = row.querySelector(".string-alarm-badge");
+  if (show) {
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "string-alarm-badge";
+      badge.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i>`;
+      row.appendChild(badge);
+    }
+  } else if (badge) {
+    badge.remove();
+  }
 }
 
 // ======================================================
@@ -1264,6 +1393,7 @@ function renderStringsGrid(gridEl, payload) {
   gridEl.innerHTML = "";
 
   if (!strings.length || inverterRealId == null) {
+    if (inverterRealId != null) setInverterStringAlarmBadge(inverterRealId, false);
     gridEl.innerHTML = `<div style="color:#9adbb8; opacity:.7; padding:6px 2px;">Sem dados de strings</div>`;
     return;
   }
@@ -1283,13 +1413,22 @@ function renderStringsGrid(gridEl, payload) {
   const visibleStrings = strings.filter(isEffectiveEnabled);
   const hiddenStrings = strings.filter(s => !isEffectiveEnabled(s));
 
+  const inverterOnline = getInverterOnlineStateById(inverterRealId);
+  let hasAlarmOnAnyMonitorable = false;
+
   visibleStrings.forEach(str => {
     const el = document.createElement("div");
     el.className = "string-card";
     el.dataset.string = str.string_index;
-
-    if (!str.has_data) el.classList.add("nodata");
-    else el.classList.add("active");
+    const inAlarm = isStringInAlarm(str, inverterOnline);
+    if (inAlarm) {
+      el.classList.add("string-alarm");
+      hasAlarmOnAnyMonitorable = true;
+    } else if (!str.has_data) {
+      el.classList.add("nodata");
+    } else {
+      el.classList.add("active");
+    }
 
     const ampText = str.has_data ? fmtAmp(str.current_a) : "—";
 
@@ -1357,6 +1496,8 @@ function renderStringsGrid(gridEl, payload) {
 
     gridEl.appendChild(addBtn);
   }
+
+  setInverterStringAlarmBadge(inverterRealId, hasAlarmOnAnyMonitorable);
 }
 
 // ======================================================
@@ -1482,6 +1623,8 @@ let LAST_INVERTER_ROWS_SIGNATURE = "";
 function renderDailyChart() {
   const canvas = document.getElementById("plantMainChart");
   if (!canvas || !DAILY?.labels?.length) return;
+  const ratedPower = asNumber(PLANT_STATE.rated_power_kwp, 0);
+  const powerAxisMax = ratedPower > 0 ? Math.ceil(ratedPower) : 1250;
 
   const ctx = canvas.getContext("2d");
 
@@ -1541,7 +1684,7 @@ function renderDailyChart() {
         yPower: {
           position: "left",
           min: 0,
-          max: 2000,
+          suggestedMax: powerAxisMax,
           ticks: { color: "#39e58c", callback: v => `${v} kW` },
           grid: { color: "rgba(255,255,255,0.05)" }
         },
@@ -1567,6 +1710,9 @@ function normalizeMonthlyPayload(payload) {
 
   const dailyNew = Array.isArray(payload.daily_kwh) ? payload.daily_kwh.slice() : null;
   const mtdNew = Array.isArray(payload.mtd_kwh) ? payload.mtd_kwh.slice() : null;
+  const irrDailyNew = Array.isArray(payload.irradiation_daily_kwh_m2)
+    ? payload.irradiation_daily_kwh_m2.slice()
+    : null;
   const energyLegacy = Array.isArray(payload.energy_kwh) ? payload.energy_kwh.slice() : null;
 
   let daily = (dailyNew ?? energyLegacy ?? []).map(v => Number(v) || 0);
@@ -1598,12 +1744,15 @@ function normalizeMonthlyPayload(payload) {
 
   let acc = 0;
   mtd = daily.map(v => (acc += (Number(v) || 0)));
+  const irradiationDaily = (irrDailyNew ?? []).slice(0, daily.length).map(v => Number(v) || 0);
+  while (irradiationDaily.length < daily.length) irradiationDaily.push(0);
 
   return {
     ...payload,
     labels: finalLabels,
     daily_kwh: daily,
     mtd_kwh: mtd,
+    irradiation_daily_kwh_m2: irradiationDaily,
     energy_kwh: daily
   };
 }
@@ -1778,74 +1927,128 @@ function renderPlantName(realtime) {
 // ✅ REFRESH (realtime + alarms + inverters rows + strings abertas + relay)
 // ======================================================
 async function refreshRealtimeEverything() {
+  if (IS_REFRESHING_PLANT) return;
+  IS_REFRESHING_PLANT = true;
+
+  let realtime = null;
   try {
-    const realtime = await fetchPlantRealtime(PLANT_ID);
-    renderPlantName(realtime);
-
-    if (realtime) {
-      const rated = asNumber(realtime.rated_power_kw, PLANT_STATE.rated_power_kwp);
-      const active = asNumber(realtime.active_power_kw, PLANT_STATE.active_power_kw);
-      const prPct = normalizePercentMaybe(realtime.performance_ratio);
-
-      PLANT_STATE = {
-        ...PLANT_STATE,
-        rated_power_kwp: rated,
-        active_power_kw: active,
-        capacity_percent: rated > 0 ? (active / rated) * 100 : PLANT_STATE.capacity_percent,
-        pr_percent: prPct != null ? prPct : PLANT_STATE.pr_percent
-      };
+    try {
+      realtime = await fetchPlantRealtime(PLANT_ID);
+      renderPlantName(realtime);
+      if (realtime) {
+        const rated = asNumber(
+          realtime.rated_power_kw ?? realtime.rated_power_ac_kw ?? realtime.rated_power_kwp,
+          PLANT_STATE.rated_power_kwp
+        );
+        const active = asNumber(
+          realtime.active_power_kw ?? realtime.active_power_inverter_kw ?? realtime.active_power_meter_kw,
+          PLANT_STATE.active_power_kw
+        );
+        const prPct = normalizePercentMaybe(
+          realtime.performance_ratio ?? realtime.pr_daily_pct ?? realtime.pr_percent
+        );
+        PLANT_STATE = {
+          ...PLANT_STATE,
+          rated_power_kwp: rated,
+          active_power_kw: active,
+          capacity_percent: rated > 0 ? (active / rated) * 100 : PLANT_STATE.capacity_percent,
+          pr_percent: prPct != null ? prPct : PLANT_STATE.pr_percent
+        };
+      }
+    } catch (e) {
+      console.error("[refreshRealtimeEverything][realtime] erro", e);
     }
 
-    ACTIVE_ALARMS = await fetchActiveAlarms(PLANT_ID);
-    renderAlarms(ACTIVE_ALARMS);
+    const [alarmsRes, invertersRes, relayRes, multimeterRes, trackersRes] = await Promise.allSettled([
+      fetchActiveAlarms(PLANT_ID),
+      fetchInvertersRealtime(PLANT_ID),
+      safeFetchRelayIfSupported(PLANT_ID),
+      safeFetchMultimeterIfSupported(PLANT_ID),
+      fetchTrackersRealtime(PLANT_ID)
+    ]);
 
-    INVERTERS_REALTIME = await fetchInvertersRealtime(PLANT_ID);
-    // ✅ guarda os extras por inverter_id (pra render abaixo das strings)
-    INVERTER_EXTRAS_BY_ID = new Map();
-    dedupInvertersById(INVERTERS_REALTIME).forEach(inv => {
-      const id = getInverterRealId(inv);
-      if (id != null) INVERTER_EXTRAS_BY_ID.set(String(id), inv);
-    });
+    if (alarmsRes.status === "fulfilled") {
+      ACTIVE_ALARMS = alarmsRes.value;
+      renderAlarms(ACTIVE_ALARMS);
+    } else {
+      console.error("[refreshRealtimeEverything][alarms] erro", alarmsRes.reason);
+    }
 
-    const dedup = dedupInvertersById(INVERTERS_REALTIME);
+    if (invertersRes.status === "fulfilled") {
+      INVERTERS_REALTIME = invertersRes.value;
+      INVERTER_EXTRAS_BY_ID = new Map();
+      dedupInvertersById(INVERTERS_REALTIME).forEach(inv => {
+        const id = getInverterRealId(inv);
+        if (id != null) INVERTER_EXTRAS_BY_ID.set(String(id), inv);
+      });
 
-    PLANT_CATALOG.inverters = dedup;
-    PLANT_STATE = {
-      ...PLANT_STATE,
-      inverter_total: dedup.length,
-      inverter_online: countOnlineInverters(dedup)
-    };
+      const dedup = dedupInvertersById(INVERTERS_REALTIME);
+      PLANT_CATALOG.inverters = dedup;
+      PLANT_STATE = {
+        ...PLANT_STATE,
+        inverter_total: dedup.length,
+        inverter_online: countOnlineInverters(dedup)
+      };
 
-    ensureInverterRowsFromRealtime(INVERTERS_REALTIME);
-    renderInvertersRows(INVERTERS_REALTIME);
-    refreshInverterStatusChips(INVERTERS_REALTIME);
+      ensureInverterRowsFromRealtime(INVERTERS_REALTIME);
+      renderInvertersRows(INVERTERS_REALTIME);
+      refreshInverterStatusChips(INVERTERS_REALTIME);
+    } else {
+      console.error("[refreshRealtimeEverything][inverters] erro", invertersRes.reason);
+    }
 
-    const relayItem = await safeFetchRelayIfSupported(PLANT_ID);
-    RELAY_REALTIME = relayItem;
-    PLANT_CATALOG.hasRelay = !!relayItem;
-    setRelaySectionVisible(RELAY_SUPPORTED !== false);
-    if (RELAY_SUPPORTED !== false) renderRelayCard(relayItem);
+    if (relayRes.status === "fulfilled") {
+      const relayItem = relayRes.value;
+      RELAY_REALTIME = relayItem;
+      PLANT_CATALOG.hasRelay = !!relayItem;
+      setRelaySectionVisible(RELAY_SUPPORTED !== false);
+      if (RELAY_SUPPORTED !== false) renderRelayCard(relayItem);
+    } else {
+      console.error("[refreshRealtimeEverything][relay] erro", relayRes.reason);
+    }
 
-    const multimeterItem = await safeFetchMultimeterIfSupported(PLANT_ID);
-    MULTIMETER_REALTIME = multimeterItem;
-    setMultimeterSectionVisible(MULTIMETER_SUPPORTED !== false);
-    if (MULTIMETER_SUPPORTED !== false) renderMultimeterCard(multimeterItem);
+    if (multimeterRes.status === "fulfilled") {
+      const multimeterItem = multimeterRes.value;
+      MULTIMETER_REALTIME = multimeterItem;
+      setMultimeterSectionVisible(MULTIMETER_SUPPORTED !== false);
+      if (MULTIMETER_SUPPORTED !== false) renderMultimeterCard(multimeterItem);
+    } else {
+      console.error("[refreshRealtimeEverything][multimeter] erro", multimeterRes.reason);
+    }
+
+    if (trackersRes.status === "fulfilled") {
+      const trackersPayload = trackersRes.value;
+      TRACKERS_DATA = Array.isArray(trackersPayload?.items) ? trackersPayload.items : [];
+      TRACKERS_PLANT_CENTER = trackersPayload?.plant_center ?? null;
+      TRACKERS_PLANT_BOUNDS = trackersPayload?.plant_bounds ?? null;
+      const hasTrackers = Array.isArray(TRACKERS_DATA) && TRACKERS_DATA.some(
+        (t) => Number.isFinite(Number(t.latitude)) && Number.isFinite(Number(t.longitude))
+      );
+      setTrackersSectionVisible(hasTrackers);
+      if (hasTrackers) renderTrackersPanel();
+    } else {
+      TRACKERS_DATA = [];
+      TRACKERS_PLANT_CENTER = null;
+      TRACKERS_PLANT_BOUNDS = null;
+      renderTrackersPanel();
+      console.error("[refreshRealtimeEverything][trackers] erro", trackersRes.reason);
+    }
 
     renderHeaderSummary();
     renderWeather(realtime?.weather ?? null);
     renderSummaryStrip();
 
-    await refreshOpenStringsPanels();
-
-    // ✅ se tiver inversor aberto, renderiza os chips amarelos abaixo das strings
-    if (OPEN_INVERTER_REAL_ID != null) {
-      const inv = INVERTER_EXTRAS_BY_ID.get(String(OPEN_INVERTER_REAL_ID));
-      renderInverterExtras(OPEN_INVERTER_REAL_ID, inv);
+    try {
+      await refreshOpenStringsPanels();
+      if (OPEN_INVERTER_REAL_ID != null) {
+        const inv = INVERTER_EXTRAS_BY_ID.get(String(OPEN_INVERTER_REAL_ID));
+        renderInverterExtras(OPEN_INVERTER_REAL_ID, inv);
+      }
+    } catch (e) {
+      console.error("[refreshRealtimeEverything][strings] erro", e);
     }
-  } catch (e) {
-    console.error("[refreshRealtimeEverything] erro", e);
-    renderHeaderSummary();
-    renderSummaryStrip();
+  } finally {
+    IS_REFRESHING_PLANT = false;
   }
 }
 
@@ -1856,6 +2059,10 @@ let TRACKER_VIEW_MODE = "state";
 let TRACKERS_DATA = [];
 let TRACKERS_FILTER_TEXT = "";
 let TRACKERS_TRANSFORM = { scale: 1, x: 0, y: 0 };
+let TRACKERS_PLANT_CENTER = null;
+let TRACKERS_PLANT_BOUNDS = null;
+let TRACKERS_MAP = null;
+let TRACKERS_MARKERS_LAYER = null;
 
 function createMockTrackers(count = 220) {
   const items = [];
@@ -1991,68 +2198,77 @@ function renderTrackersLegend() {
 }
 
 function applyTrackersTransform() {
-  const stageEl = document.getElementById("trackersStage");
-  if (!stageEl) return;
-  const { x, y, scale } = TRACKERS_TRANSFORM;
-  stageEl.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+  if (!TRACKERS_MAP) return;
+  TRACKERS_MAP.invalidateSize();
 }
 
 function renderTrackersNodes() {
-  const layerEl = document.getElementById("trackersGridLayer");
-  if (!layerEl) return;
+  if (!TRACKERS_MAP || !TRACKERS_MARKERS_LAYER) return;
+  TRACKERS_MARKERS_LAYER.clearLayers();
 
   const filterText = TRACKERS_FILTER_TEXT.trim().toLowerCase();
   const filtered = TRACKERS_DATA.filter((t) => {
     if (!filterText) return true;
-    const hay = `${t.name} ${t.id} ${t.kind}`.toLowerCase();
+    const hay = `${t.name || ""} ${t.id || ""} ${t.tracker_id || ""} ${t.kind || ""} ${t.tracker_type || ""}`.toLowerCase();
     return hay.includes(filterText);
   });
 
-  layerEl.innerHTML = "";
-  filtered.forEach((tracker) => {
-    const node = document.createElement("button");
-    node.type = "button";
-    node.className = "tracker-node";
-    node.style.left = `${tracker.x}px`;
-    node.style.top = `${tracker.y}px`;
-    node.style.background = getTrackerColorByMode(tracker, TRACKER_VIEW_MODE);
-    node.dataset.trackerId = tracker.id;
+  const valid = filtered.filter(t =>
+    Number.isFinite(Number(t.latitude)) && Number.isFinite(Number(t.longitude))
+  );
 
-    node.addEventListener("mouseenter", (ev) => {
-      const tooltip = document.getElementById("trackerTooltip");
-      const stageWrap = document.getElementById("trackersStageWrap");
-      if (!tooltip || !stageWrap) return;
-      tooltip.hidden = false;
-      tooltip.innerHTML = `
-        <strong>${tracker.name}</strong><br>
-        ID: ${tracker.id}<br>
-        Tipo: ${String(tracker.kind).toUpperCase()}<br>
-        Estado: ${tracker.state_code}<br>
-        Ângulo: ${tracker.angle_deg ?? "—"}<br>
-        Erro: ${tracker.error_value ?? "—"}<br>
-        Status: ${tracker.is_online ? "online" : "offline"}
-      `;
-      const wrapRect = stageWrap.getBoundingClientRect();
-      tooltip.style.left = `${ev.clientX - wrapRect.left + 14}px`;
-      tooltip.style.top = `${ev.clientY - wrapRect.top + 14}px`;
-    });
+  const fallback = document.getElementById("trackersMapFallback");
+  if (!valid.length) {
+    if (fallback) fallback.hidden = false;
+    return;
+  }
+  if (fallback) fallback.hidden = true;
 
-    node.addEventListener("mousemove", (ev) => {
-      const tooltip = document.getElementById("trackerTooltip");
-      const stageWrap = document.getElementById("trackersStageWrap");
-      if (!tooltip || !stageWrap) return;
-      const wrapRect = stageWrap.getBoundingClientRect();
-      tooltip.style.left = `${ev.clientX - wrapRect.left + 14}px`;
-      tooltip.style.top = `${ev.clientY - wrapRect.top + 14}px`;
-    });
-
-    node.addEventListener("mouseleave", () => {
-      const tooltip = document.getElementById("trackerTooltip");
-      if (tooltip) tooltip.hidden = true;
-    });
-
-    layerEl.appendChild(node);
+  const bounds = [];
+  const markerIcon = (color) => L.divIcon({
+    className: "",
+    html: `<div class="tracker-map-marker" style="background:${color}"></div>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7]
   });
+
+  valid.forEach((tracker) => {
+    const lat = Number(tracker.latitude);
+    const lng = Number(tracker.longitude);
+    bounds.push([lat, lng]);
+
+    const color = getTrackerColorByMode(tracker, TRACKER_VIEW_MODE);
+    const m = L.marker([lat, lng], { icon: markerIcon(color) });
+    const displayName = tracker.name || tracker.tracker_code || tracker.tracker_id || "Tracker";
+    const displayType = String(tracker.tracker_type || tracker.kind || "—").toUpperCase();
+    m.bindPopup(`
+      <strong>${displayName}</strong><br>
+      Tipo: ${displayType}<br>
+      Estado: ${tracker.state_code ?? "—"}<br>
+      Ângulo: ${tracker.angle_deg ?? "—"}<br>
+      Erro: ${tracker.error_value ?? "—"}<br>
+      Status: ${tracker.is_online ? "online" : "offline"}<br>
+      Atualização: ${fmtDatePtBR(tracker.last_update)}
+    `);
+    m.addTo(TRACKERS_MARKERS_LAYER);
+  });
+
+  if (TRACKERS_PLANT_BOUNDS &&
+      Number.isFinite(Number(TRACKERS_PLANT_BOUNDS.min_lat)) &&
+      Number.isFinite(Number(TRACKERS_PLANT_BOUNDS.max_lat)) &&
+      Number.isFinite(Number(TRACKERS_PLANT_BOUNDS.min_lng)) &&
+      Number.isFinite(Number(TRACKERS_PLANT_BOUNDS.max_lng))) {
+    TRACKERS_MAP.fitBounds([
+      [Number(TRACKERS_PLANT_BOUNDS.min_lat), Number(TRACKERS_PLANT_BOUNDS.min_lng)],
+      [Number(TRACKERS_PLANT_BOUNDS.max_lat), Number(TRACKERS_PLANT_BOUNDS.max_lng)]
+    ], { padding: [20, 20] });
+  } else if (TRACKERS_PLANT_CENTER &&
+      Number.isFinite(Number(TRACKERS_PLANT_CENTER.latitude)) &&
+      Number.isFinite(Number(TRACKERS_PLANT_CENTER.longitude))) {
+    TRACKERS_MAP.setView([Number(TRACKERS_PLANT_CENTER.latitude), Number(TRACKERS_PLANT_CENTER.longitude)], 18);
+  } else if (bounds.length) {
+    TRACKERS_MAP.fitBounds(bounds, { padding: [20, 20] });
+  }
 }
 
 function renderTrackersPanel() {
@@ -2077,20 +2293,31 @@ function filterTrackers(searchText) {
 function initTrackersPanel() {
   const sectionEl = document.getElementById("trackersSection");
   const stageWrapEl = document.getElementById("trackersStageWrap");
-  if (!sectionEl || !stageWrapEl) return;
+  const mapEl = document.getElementById("trackersMap");
+  if (!sectionEl || !stageWrapEl || !mapEl || typeof L === "undefined") return;
   const tabToggleEl = document.getElementById("trackersTabToggle");
 
   if (tabToggleEl) {
     tabToggleEl.addEventListener("click", () => {
-      sectionEl.classList.toggle("is-collapsed");
-      const expanded = !sectionEl.classList.contains("is-collapsed");
-      tabToggleEl.setAttribute("aria-expanded", expanded ? "true" : "false");
+      const collapsed = !sectionEl.classList.contains("is-collapsed");
+      setTrackersCollapsed(collapsed);
+      const expanded = !collapsed;
       if (expanded) applyTrackersTransform();
     });
   }
 
-  TRACKERS_DATA = createMockTrackers();
-  TRACKERS_TRANSFORM = { scale: 0.52, x: 18, y: 18 };
+  TRACKERS_DATA = [];
+  TRACKERS_TRANSFORM = { scale: 1, x: 0, y: 0 };
+  TRACKERS_MAP = L.map(mapEl, {
+    zoomControl: false,
+    attributionControl: false
+  }).setView([-14.235, -51.9253], 4);
+
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    subdomains: "abcd",
+    maxZoom: 20
+  }).addTo(TRACKERS_MAP);
+  TRACKERS_MARKERS_LAYER = L.layerGroup().addTo(TRACKERS_MAP);
 
   document.getElementById("trackerModeState")?.addEventListener("click", () => setTrackerMode("state"));
   document.getElementById("trackerModeAngle")?.addEventListener("click", () => setTrackerMode("angle"));
@@ -2098,54 +2325,34 @@ function initTrackersPanel() {
   document.getElementById("trackersSearchInput")?.addEventListener("input", (e) => filterTrackers(e.target.value));
 
   document.getElementById("trackersZoomIn")?.addEventListener("click", () => {
-    TRACKERS_TRANSFORM.scale = Math.min(2.5, TRACKERS_TRANSFORM.scale + 0.12);
-    applyTrackersTransform();
+    if (TRACKERS_MAP) TRACKERS_MAP.zoomIn();
   });
   document.getElementById("trackersZoomOut")?.addEventListener("click", () => {
-    TRACKERS_TRANSFORM.scale = Math.max(0.3, TRACKERS_TRANSFORM.scale - 0.12);
-    applyTrackersTransform();
+    if (TRACKERS_MAP) TRACKERS_MAP.zoomOut();
   });
   document.getElementById("trackersZoomReset")?.addEventListener("click", () => {
-    TRACKERS_TRANSFORM = { scale: 0.52, x: 18, y: 18 };
-    applyTrackersTransform();
+    if (!TRACKERS_MAP) return;
+    if (TRACKERS_PLANT_BOUNDS &&
+      Number.isFinite(Number(TRACKERS_PLANT_BOUNDS.min_lat)) &&
+      Number.isFinite(Number(TRACKERS_PLANT_BOUNDS.max_lat)) &&
+      Number.isFinite(Number(TRACKERS_PLANT_BOUNDS.min_lng)) &&
+      Number.isFinite(Number(TRACKERS_PLANT_BOUNDS.max_lng))) {
+      TRACKERS_MAP.fitBounds([
+        [Number(TRACKERS_PLANT_BOUNDS.min_lat), Number(TRACKERS_PLANT_BOUNDS.min_lng)],
+        [Number(TRACKERS_PLANT_BOUNDS.max_lat), Number(TRACKERS_PLANT_BOUNDS.max_lng)]
+      ], { padding: [20, 20] });
+    } else if (TRACKERS_PLANT_CENTER &&
+      Number.isFinite(Number(TRACKERS_PLANT_CENTER.latitude)) &&
+      Number.isFinite(Number(TRACKERS_PLANT_CENTER.longitude))) {
+      TRACKERS_MAP.setView([Number(TRACKERS_PLANT_CENTER.latitude), Number(TRACKERS_PLANT_CENTER.longitude)], 18);
+    } else {
+      TRACKERS_MAP.setView([-14.235, -51.9253], 4);
+    }
   });
-
-  let isPanning = false;
-  let panStartX = 0;
-  let panStartY = 0;
-  let startX = 0;
-  let startY = 0;
-
-  stageWrapEl.addEventListener("mousedown", (ev) => {
-    if (ev.button !== 0) return;
-    isPanning = true;
-    panStartX = ev.clientX;
-    panStartY = ev.clientY;
-    startX = TRACKERS_TRANSFORM.x;
-    startY = TRACKERS_TRANSFORM.y;
-    document.getElementById("trackersStage")?.classList.add("is-panning");
-  });
-
-  window.addEventListener("mousemove", (ev) => {
-    if (!isPanning) return;
-    TRACKERS_TRANSFORM.x = startX + (ev.clientX - panStartX);
-    TRACKERS_TRANSFORM.y = startY + (ev.clientY - panStartY);
-    applyTrackersTransform();
-  });
-
-  window.addEventListener("mouseup", () => {
-    isPanning = false;
-    document.getElementById("trackersStage")?.classList.remove("is-panning");
-  });
-
-  stageWrapEl.addEventListener("wheel", (ev) => {
-    ev.preventDefault();
-    const delta = ev.deltaY > 0 ? -0.08 : 0.08;
-    TRACKERS_TRANSFORM.scale = Math.max(0.3, Math.min(2.5, TRACKERS_TRANSFORM.scale + delta));
-    applyTrackersTransform();
-  }, { passive: false });
 
   renderTrackersPanel();
+  setTrackersSectionVisible(false);
+  setTrackersCollapsed(true);
 }
 
 // ======================================================
@@ -2165,33 +2372,29 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   try {
-    await refreshRealtimeEverything();
+    const refreshPromise = refreshRealtimeEverything();
+    const chartsPromise = Promise.all([
+      fetchDailyEnergy(PLANT_ID),
+      fetchMonthlyEnergy(PLANT_ID)
+    ]);
 
-    const grids = document.querySelectorAll(".strings-grid[data-inverter-real-id]");
-    for (const grid of grids) {
-      const realId = grid.dataset.inverterRealId;
-      await refreshStringsForRealInverter(realId);
+    await refreshPromise;
 
-      const panel = document.getElementById(`strings-${realId}`);
-      if (panel?.classList.contains("open")) {
-        panel.style.maxHeight = panel.scrollHeight + "px";
-      }
-    }
+    const [dailyRaw, monthlyRaw] = await chartsPromise;
 
-    // ✅ DAILY: normaliza para sempre começar em 00:00
-    const daily = await fetchDailyEnergy(PLANT_ID);
-    if (daily?.labels?.length) {
-      DAILY = normalizeDailyPayload(daily);
+    if (dailyRaw) {
+      DAILY = normalizeDailyPayload(dailyRaw);
       renderDailyChart();
     }
 
-    const monthlyRaw = await fetchMonthlyEnergy(PLANT_ID);
     if (monthlyRaw) {
       MONTHLY = normalizeMonthlyPayload(monthlyRaw);
       renderMonthlyChart();
     }
 
-    setInterval(refreshRealtimeEverything, PLANT_REFRESH_INTERVAL_MS);
+    setInterval(() => {
+      void refreshRealtimeEverything();
+    }, PLANT_REFRESH_INTERVAL_MS);
 
     document.addEventListener("visibilitychange", async () => {
       if (!document.hidden) {
