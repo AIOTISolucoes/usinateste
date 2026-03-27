@@ -6,10 +6,15 @@
   <title>Usina</title>
 
   <!-- CSS -->
-  <link rel="stylesheet" href="./css/plant.css" />
+  <link rel="stylesheet" href="css/plant.css" />
+  <link rel="stylesheet" href="css/plant.css" />
   <link
     rel="stylesheet"
     href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+  />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
   />
 
   <!-- Chart.js -->
@@ -153,7 +158,7 @@
 
             <div class="legend-text">
               <span class="legend-line legend-line--green">Active Power</span>
-              <span class="legend-line legend-line--yellow">Irradiância</span>
+              <span class="legend-line legend-line--yellow">Irradiance POA</span>
             </div>
           </div>
         </div>
@@ -258,38 +263,39 @@
       </button>
 
       <div id="trackersPanelBody" class="trackers-panel-body">
-        <div class="trackers-toolbar">
-          <h3 class="card-title">Trackers</h3>
+      <div class="trackers-toolbar">
+        <h3 class="card-title">Trackers</h3>
 
-          <div class="trackers-search-box">
-            <input id="trackersSearchInput" type="search" placeholder="Buscar tracker por nome, ID ou tipo" />
-          </div>
-
-          <div class="trackers-mode-switch">
-            <button id="trackerModeState" class="tracker-mode-btn is-active" type="button">Estado</button>
-            <button id="trackerModeAngle" class="tracker-mode-btn" type="button">Ângulo</button>
-            <button id="trackerModeError" class="tracker-mode-btn" type="button">Erro</button>
-          </div>
+        <div class="trackers-search-box">
+          <input id="trackersSearchInput" type="search" placeholder="Buscar tracker por nome, ID ou tipo" />
         </div>
 
-        <div class="trackers-layout">
-          <aside class="trackers-sidebar">
-            <div class="trackers-zoom-controls">
-              <button id="trackersZoomIn" class="tracker-mode-btn" type="button">Zoom +</button>
-              <button id="trackersZoomOut" class="tracker-mode-btn" type="button">Zoom −</button>
-              <button id="trackersZoomReset" class="tracker-mode-btn" type="button">Reset</button>
-            </div>
-
-            <div id="trackersLegend" class="trackers-legend"></div>
-          </aside>
-
-          <div id="trackersStageWrap" class="trackers-stage-wrap">
-            <div id="trackersStage" class="trackers-stage">
-              <div id="trackersGridLayer" class="trackers-grid-layer"></div>
-            </div>
-            <div id="trackerTooltip" class="tracker-tooltip" hidden></div>
-          </div>
+        <div class="trackers-mode-switch">
+          <button id="trackerModeState" class="tracker-mode-btn is-active" type="button">Estado</button>
+          <button id="trackerModeAngle" class="tracker-mode-btn" type="button">Ângulo</button>
+          <button id="trackerModeError" class="tracker-mode-btn" type="button">Erro</button>
         </div>
+      </div>
+
+      <div class="trackers-layout">
+        <aside class="trackers-sidebar">
+          <div class="trackers-zoom-controls">
+            <button id="trackersZoomIn" class="tracker-mode-btn" type="button">Zoom +</button>
+            <button id="trackersZoomOut" class="tracker-mode-btn" type="button">Zoom −</button>
+            <button id="trackersZoomReset" class="tracker-mode-btn" type="button">Reset</button>
+          </div>
+
+          <div id="trackersLegend" class="trackers-legend"></div>
+        </aside>
+
+        <div id="trackersStageWrap" class="trackers-stage-wrap">
+          <div id="trackersMap" class="trackers-map" aria-label="Mapa de trackers"></div>
+          <div id="trackersMapFallback" class="trackers-map-fallback" hidden>
+            Trackers sem coordenadas configuradas.
+          </div>
+          <div id="trackerTooltip" class="tracker-tooltip" hidden></div>
+        </div>
+      </div>
       </div>
     </section>
 
@@ -320,7 +326,6 @@
       }
 
       trackersBtn?.classList.toggle('on', isHidden);
-      try { history.replaceState(null, '', '#sec-trackers'); } catch (_) {}
     }
 
     function scrollToTarget(selector) {
@@ -328,11 +333,11 @@
         toggleTrackersMenu();
         return;
       }
-
       const el = document.querySelector(selector);
       if (!el) return;
 
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
       try { history.replaceState(null, '', selector); } catch (_) {}
     }
 
@@ -351,6 +356,7 @@
   })();
 </script>
 
-<script src="./js/plant.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="js/plant.js"></script>
 </body>
 </html>
