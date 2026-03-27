@@ -21,7 +21,7 @@ function logout() {
 // =============================================================================
 // API FETCH COM CONTEXTO DO USUÁRIO LOGADO
 // =============================================================================
-const API_BASE = "https://jgeg9i0js1.execute-api.us-east-1.amazonaws.com";
+const API_BASE = "https://evwdyzzfri.execute-api.us-east-1.amazonaws.com";
 const INVERTER_NO_COMM_AFTER_MS = 15 * 60 * 1000; // legado (chips usam status do mart)
 const DASHBOARD_REFRESH_INTERVAL_MS = 10000;
 const EVENTS_REFRESH_INTERVAL_MS = 10000;
@@ -110,7 +110,7 @@ let eventsAbortController = null;
 let ALARMS_RENDER_SEQ = 0;
 
 // ✅ MODO PADRÃO DO EVENTS
-let EVENTS_VIEW_MODE = "round_robin";
+let EVENTS_VIEW_MODE = "normal";
 
 // ✅ quantas “rodadas/seqüências” você quer ver (T1..T5)
 let EVENTS_ROUNDS = 5;
@@ -379,42 +379,29 @@ async function refreshInverterStatusChipsForPlant(plantId) {
 }
 
 // =============================================================================
-// HELPERS DE DATA (EVENTS) — DATE + START TIME + END TIME
+// HELPERS DE DATA (EVENTS)
 // =============================================================================
 function safeTrim(v) {
   if (v == null) return "";
   return String(v).trim();
 }
 
-function todayYYYYMMDD() {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+function datetimeLocalToISO(value) {
+  const raw = safeTrim(value);
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-function isoFromDateAndTime(dateYYYYMMDD, timeHHMM, isEnd = false) {
-  if (!dateYYYYMMDD) return null;
-
-  const [yyyy, mm, dd] = dateYYYYMMDD.split("-").map(Number);
-  if (!yyyy || !mm || !dd) return null;
-
-  let HH = 0, MI = 0, SS = 0;
-
-  if (timeHHMM) {
-    const [h, m] = String(timeHHMM).split(":").map(Number);
-    HH = Number.isFinite(h) ? h : 0;
-    MI = Number.isFinite(m) ? m : 0;
-    SS = isEnd ? 59 : 0;
-  } else {
-    HH = isEnd ? 23 : 0;
-    MI = isEnd ? 59 : 0;
-    SS = isEnd ? 59 : 0;
-  }
-
-  const d = new Date(yyyy, mm - 1, dd, HH, MI, SS);
-  return isNaN(d.getTime()) ? null : d.toISOString();
+function toDateTimeLocalInputValue(d) {
+  const dt = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(dt.getTime())) return "";
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  const hh = String(dt.getHours()).padStart(2, "0");
+  const mi = String(dt.getMinutes()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
 }
 
 function clampEventRange(startISO, endISO) {
@@ -430,49 +417,6 @@ function clampEventRange(startISO, endISO) {
   }
 
   return { startISO, endISO };
-}
-
-// =============================================================================
-// PARSER DE EQUIPMENT (Inversor2 / INV-02 / Relé3 / Relay 3 / Weather)
-// =============================================================================
-function parseEquipmentFilter(input) {
-  const raw = safeTrim(input);
-  if (!raw) return { source: null, device_id: null, equipment_norm: "" };
-
-  const compact = raw.replace(/\s+/g, "").replace(/[^\w]/g, "");
-  const lower = compact.toLowerCase();
-
-  const invMatch =
-    lower.match(/^inversor(\d+)$/) ||
-    lower.match(/^inverter(\d+)$/) ||
-    lower.match(/^inv(\d+)$/);
-
-  if (invMatch) {
-    return {
-      source: "inverter",
-      device_id: parseInt(invMatch[1], 10),
-      equipment_norm: `Inversor${invMatch[1]}`
-    };
-  }
-
-  const relayMatch =
-    lower.match(/^relay(\d+)$/) ||
-    lower.match(/^rele(\d+)$/) ||
-    lower.match(/^rel(\d+)$/);
-
-  if (relayMatch) {
-    return {
-      source: "relay",
-      device_id: parseInt(relayMatch[1], 10),
-      equipment_norm: `Relay${relayMatch[1]}`
-    };
-  }
-
-  if (lower === "weather" || lower === "clima") {
-    return { source: "weather", device_id: null, equipment_norm: "Weather" };
-  }
-
-  return { source: null, device_id: null, equipment_norm: raw };
 }
 
 // =============================================================================
@@ -520,6 +464,20 @@ async function fetchPlants() {
     return Array.isArray(parsed) ? parsed : [];
   }
   return Array.isArray(data) ? data : [];
+}
+
+async function fetchPlantDeviceOptions(plantId) {
+  if (plantId == null || !String(plantId).match(/^\d+$/)) return [];
+
+  const res = await apiFetch(`/plants/${plantId}/devices/options`);
+  if (!res.ok) throw new Error("Erro ao buscar equipamentos da usina");
+
+  const data = await res.json();
+  if (data && data.body) {
+    const parsed = typeof data.body === "string" ? JSON.parse(data.body) : data.body;
+    return Array.isArray(parsed?.items) ? parsed.items : (Array.isArray(parsed) ? parsed : []);
+  }
+  return Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
 }
 
 
@@ -586,13 +544,14 @@ async function fetchEventsSafeBackend({
   page_size = 30,
   severity,
   event_type,
+  status,
   q,
   source,
   device_id,
   plant_id,
-  mode = "round_robin",
+  mode = "normal",
   rounds = 5,
-  include_total = false,
+  include_total = true,
   _retry = 0
 } = {}) {
   if (!start_time || !end_time) {
@@ -628,6 +587,10 @@ async function fetchEventsSafeBackend({
   const allowedEventTypes = new Set(["all", "alarm", "event", "status"]);
   if (allowedEventTypes.has(et) && et !== "all") params.append("event_type", et);
 
+  const st = String(status || "").toLowerCase();
+  const allowedStatus = new Set(["all", "active", "inactive"]);
+  if (allowedStatus.has(st) && st !== "all") params.append("status", st);
+
   const src = String(source || "").toLowerCase();
   const allowedSources = new Set(["inverter", "relay", "weather"]);
   if (allowedSources.has(src)) params.append("source", src);
@@ -656,7 +619,7 @@ async function fetchEventsSafeBackend({
     console.warn(`[EVENTS] server ${res.status}. retry em ${waitMs}ms...`);
     await new Promise(r => setTimeout(r, waitMs));
     return fetchEventsSafeBackend({
-      start_time, end_time, page, page_size, severity, event_type, q, source, device_id, plant_id, mode, rounds, include_total,
+      start_time, end_time, page, page_size, severity, event_type, status, q, source, device_id, plant_id, mode, rounds, include_total,
       _retry: _retry + 1
     });
   }
@@ -689,15 +652,15 @@ function findButtonByText(text) {
 }
 
 function getEventsUIElements() {
-  const date = document.getElementById("eventsDateInput");
-  const startTime = document.getElementById("eventsStartTimeInput");
-  const endTime = document.getElementById("eventsEndTimeInput");
+  const startDateTime = document.getElementById("eventsStartDateTimeInput");
+  const endDateTime = document.getElementById("eventsEndDateTimeInput");
 
   const severitySelect = document.getElementById("eventsSeveritySelect");
-  const stateSelect = document.getElementById("eventsStateSelect");
+  const typeSelect = document.getElementById("eventsTypeSelect");
+  const statusSelect = document.getElementById("eventsStatusSelect");
 
-  const equipment = document.getElementById("eventsEquipmentInput");
-  const point = document.getElementById("eventsPointInput");
+  const plantSelect = document.getElementById("eventsPlantSelect");
+  const equipmentSelect = document.getElementById("eventsEquipmentSelect");
   const desc = document.getElementById("eventsDescriptionInput");
 
   const applyBtn = document.getElementById("eventsApplyBtn") || findButtonByText("apply");
@@ -707,7 +670,12 @@ function getEventsUIElements() {
   const nextBtn = document.getElementById("eventsNextBtn");
   const pageLabel = document.getElementById("eventsPageLabel");
 
-  return { date, startTime, endTime, severitySelect, stateSelect, equipment, point, desc, applyBtn, clearBtn, prevBtn, nextBtn, pageLabel };
+  return {
+    startDateTime, endDateTime,
+    severitySelect, typeSelect, statusSelect,
+    plantSelect, equipmentSelect, desc,
+    applyBtn, clearBtn, prevBtn, nextBtn, pageLabel
+  };
 }
 
 function ensureSeveritySelectOptions() {
@@ -731,9 +699,9 @@ function ensureSeveritySelectOptions() {
   if (!sel.value) sel.value = "all";
 }
 
-function ensureStateSelectOptions() {
+function ensureTypeSelectOptions() {
   const ui = getEventsUIElements();
-  const sel = ui.stateSelect;
+  const sel = ui.typeSelect;
   if (!sel || sel.tagName !== "SELECT") return;
 
   sel.innerHTML = "";
@@ -752,10 +720,104 @@ function ensureStateSelectOptions() {
   if (!sel.value) sel.value = "all";
 }
 
-function ensureDefaultEventsDates() {
+function ensureStatusSelectOptions() {
   const ui = getEventsUIElements();
-  if (!ui.date) return;
-  if (!safeTrim(ui.date.value)) ui.date.value = todayYYYYMMDD();
+  const sel = ui.statusSelect;
+  if (!sel || sel.tagName !== "SELECT") return;
+
+  sel.innerHTML = "";
+  [
+    { value: "all", text: "All" },
+    { value: "active", text: "Active" },
+    { value: "inactive", text: "Inactive" }
+  ].forEach(o => {
+    const opt = document.createElement("option");
+    opt.value = o.value;
+    opt.textContent = o.text;
+    sel.appendChild(opt);
+  });
+
+  if (!sel.value) sel.value = "all";
+}
+
+function ensureDefaultEventsDateTimes() {
+  const ui = getEventsUIElements();
+  if (!ui.startDateTime || !ui.endDateTime) return;
+  if (!safeTrim(ui.endDateTime.value)) ui.endDateTime.value = toDateTimeLocalInputValue(new Date());
+  if (!safeTrim(ui.startDateTime.value)) {
+    const start = new Date();
+    start.setHours(start.getHours() - 1);
+    ui.startDateTime.value = toDateTimeLocalInputValue(start);
+  }
+}
+
+function populateEventsPlantSelect(plants) {
+  const ui = getEventsUIElements();
+  const sel = ui.plantSelect;
+  if (!sel || sel.tagName !== "SELECT") return;
+
+  const previous = String(sel.value || "all");
+  sel.innerHTML = "";
+
+  const allOpt = document.createElement("option");
+  allOpt.value = "all";
+  allOpt.textContent = "Todas";
+  sel.appendChild(allOpt);
+
+  (Array.isArray(plants) ? plants : []).forEach((p) => {
+    const plantId = p.power_plant_id ?? p.plant_id ?? p.id;
+    const plantName = p.power_plant_name ?? p.plant_name ?? p.name ?? `Usina ${plantId}`;
+    if (plantId == null) return;
+    const opt = document.createElement("option");
+    opt.value = String(plantId);
+    opt.textContent = String(plantName);
+    sel.appendChild(opt);
+  });
+
+  if (previous && [...sel.options].some(o => o.value === previous)) sel.value = previous;
+  else sel.value = "all";
+}
+
+function populateEventsEquipmentSelect(devices) {
+  const ui = getEventsUIElements();
+  const sel = ui.equipmentSelect;
+  if (!sel || sel.tagName !== "SELECT") return;
+
+  const previous = String(sel.value || "all");
+  sel.innerHTML = "";
+
+  const allOpt = document.createElement("option");
+  allOpt.value = "all";
+  allOpt.textContent = "Todos";
+  sel.appendChild(allOpt);
+
+  (Array.isArray(devices) ? devices : []).forEach((d) => {
+    const deviceId = d.device_id ?? d.id;
+    if (deviceId == null) return;
+    const label = d.label || [d.device_type, d.device_name].filter(Boolean).join(" • ") || `Device ${deviceId}`;
+    const opt = document.createElement("option");
+    opt.value = String(deviceId);
+    opt.textContent = String(label);
+    sel.appendChild(opt);
+  });
+
+  if (previous && [...sel.options].some(o => o.value === previous)) sel.value = previous;
+  else sel.value = "all";
+}
+
+async function refreshEventsEquipmentOptionsForPlant(plantId) {
+  if (plantId == null || !String(plantId).match(/^\d+$/)) {
+    populateEventsEquipmentSelect([]);
+    return;
+  }
+
+  try {
+    const devices = await fetchPlantDeviceOptions(plantId);
+    populateEventsEquipmentSelect(devices);
+  } catch (e) {
+    console.warn("[EVENTS] erro ao carregar equipamentos:", e?.message || e);
+    populateEventsEquipmentSelect([]);
+  }
 }
 
 // =============================================================================
@@ -764,12 +826,8 @@ function ensureDefaultEventsDates() {
 function getEventsFiltersFromUI() {
   const ui = getEventsUIElements();
 
-  const date = safeTrim(ui.date?.value);
-  const startT = safeTrim(ui.startTime?.value);
-  const endT = safeTrim(ui.endTime?.value);
-
-  let start_time = isoFromDateAndTime(date, startT, false);
-  let end_time = isoFromDateAndTime(date, endT, true);
+  let start_time = datetimeLocalToISO(ui.startDateTime?.value);
+  let end_time = datetimeLocalToISO(ui.endDateTime?.value);
 
   const fixed = clampEventRange(start_time, end_time);
   start_time = fixed.startISO;
@@ -779,22 +837,23 @@ function getEventsFiltersFromUI() {
   if (ui.severitySelect) severity = String(ui.severitySelect.value || "all").trim().toLowerCase() || "all";
 
   let event_type = "all";
-  if (ui.stateSelect) event_type = String(ui.stateSelect.value || "all").trim().toLowerCase() || "all";
+  if (ui.typeSelect) event_type = String(ui.typeSelect.value || "all").trim().toLowerCase() || "all";
 
-  const equipmentText = safeTrim(ui.equipment?.value);
-  const equip = parseEquipmentFilter(equipmentText);
+  let status = "all";
+  if (ui.statusSelect) status = String(ui.statusSelect.value || "all").trim().toLowerCase() || "all";
 
-  const source = equip.source;
-  const device_id = equip.device_id;
-
-  const pointText = safeTrim(ui.point?.value);
   const descText = safeTrim(ui.desc?.value);
-  const qParts = [pointText, descText].map(s => safeTrim(s)).filter(Boolean);
-  const q = qParts.join(" ");
+  const q = descText;
 
-  const plant_id = null;
+  const plant_id = (ui.plantSelect && ui.plantSelect.value !== "all" && String(ui.plantSelect.value).match(/^\d+$/))
+    ? Number(ui.plantSelect.value)
+    : null;
 
-  return { start_time, end_time, plant_id, severity, event_type, q, source, device_id };
+  const device_id = (ui.equipmentSelect && ui.equipmentSelect.value !== "all" && String(ui.equipmentSelect.value).match(/^\d+$/))
+    ? Number(ui.equipmentSelect.value)
+    : null;
+
+  return { start_time, end_time, plant_id, severity, event_type, status, q, source: null, device_id };
 }
 
 function updateEventsPaginationUI(pagination) {
@@ -824,7 +883,10 @@ function wireEventsFiltersOnce() {
   EVENTS_STATE.wired = true;
 
   ensureSeveritySelectOptions();
-  ensureStateSelectOptions();
+  ensureTypeSelectOptions();
+  ensureStatusSelectOptions();
+  populateEventsPlantSelect(lastValidPlants);
+  populateEventsEquipmentSelect([]);
 
   const ui = getEventsUIElements();
 
@@ -835,14 +897,36 @@ function wireEventsFiltersOnce() {
     });
   }
 
-  if (ui.stateSelect) {
-    ui.stateSelect.addEventListener("change", () => {
+  if (ui.typeSelect) {
+    ui.typeSelect.addEventListener("change", () => {
       EVENTS_STATE.page = 1;
       loadEvents(1);
     });
   }
 
-  const textInputs = [ui.equipment, ui.point, ui.desc].filter(Boolean);
+  if (ui.statusSelect) {
+    ui.statusSelect.addEventListener("change", () => {
+      EVENTS_STATE.page = 1;
+      loadEvents(1);
+    });
+  }
+
+  if (ui.plantSelect) {
+    ui.plantSelect.addEventListener("change", async () => {
+      await refreshEventsEquipmentOptionsForPlant(ui.plantSelect.value);
+      EVENTS_STATE.page = 1;
+      loadEvents(1);
+    });
+  }
+
+  if (ui.equipmentSelect) {
+    ui.equipmentSelect.addEventListener("change", () => {
+      EVENTS_STATE.page = 1;
+      loadEvents(1);
+    });
+  }
+
+  const textInputs = [ui.desc].filter(Boolean);
   textInputs.forEach(el => {
     el.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
@@ -863,16 +947,14 @@ function wireEventsFiltersOnce() {
     ui.clearBtn.addEventListener("click", () => {
       const ui2 = getEventsUIElements();
 
-      if (ui2.equipment) ui2.equipment.value = "";
-      if (ui2.point) ui2.point.value = "";
       if (ui2.desc) ui2.desc.value = "";
 
-      if (ui2.stateSelect) ui2.stateSelect.value = "all";
+      if (ui2.typeSelect) ui2.typeSelect.value = "all";
+      if (ui2.statusSelect) ui2.statusSelect.value = "all";
       if (ui2.severitySelect) ui2.severitySelect.value = "all";
-
-      if (ui2.date) ui2.date.value = todayYYYYMMDD();
-      if (ui2.startTime) ui2.startTime.value = "";
-      if (ui2.endTime) ui2.endTime.value = "";
+      if (ui2.plantSelect) ui2.plantSelect.value = "all";
+      populateEventsEquipmentSelect([]);
+      ensureDefaultEventsDateTimes();
 
       EVENTS_STATE.page = 1;
       loadEvents(1);
@@ -1017,14 +1099,15 @@ async function loadEvents(page = 1, { silent = false } = {}) {
 
   try {
     wireEventsFiltersOnce();
-    ensureDefaultEventsDates();
+    ensureDefaultEventsDateTimes();
     ensureSeveritySelectOptions();
-    ensureStateSelectOptions();
+    ensureTypeSelectOptions();
+    ensureStatusSelectOptions();
     ensureEventsHeaderHasSeverity(tbody);
 
     if (!silent) {
       tbody.innerHTML = `
-        <tr><td colspan="6" style="text-align:center; opacity:0.7; padding:40px;">Carregando...</td></tr>
+        <tr><td colspan="7" style="text-align:center; opacity:0.7; padding:40px;">Carregando...</td></tr>
       `;
     }
 
@@ -1045,13 +1128,14 @@ async function loadEvents(page = 1, { silent = false } = {}) {
       page_size: EVENTS_STATE.page_size,
       severity: filters.severity,
       event_type: filters.event_type,
+      status: filters.status,
       source: filters.source,
       device_id: filters.device_id,
       q: filters.q,
       plant_id: filters.plant_id,
       mode: EVENTS_VIEW_MODE,
       rounds: EVENTS_ROUNDS,
-      include_total: false
+      include_total: true
     });
 
     const events = response?.items || [];
@@ -1065,7 +1149,7 @@ async function loadEvents(page = 1, { silent = false } = {}) {
 
     if (!events.length) {
       tbody.innerHTML = `
-        <tr><td colspan="6" style="text-align:center; opacity:0.6; padding:40px;">
+        <tr><td colspan="7" style="text-align:center; opacity:0.6; padding:40px;">
           Nenhum evento registrado
         </td></tr>
       `;
@@ -1086,6 +1170,7 @@ async function loadEvents(page = 1, { silent = false } = {}) {
 
       const desc = valueOrDash(ev.event_name);
       const type = valueOrDash(ev.event_type);
+      const status = valueOrDash(ev.status);
       const plant = valueOrDash(ev.power_plant_name);
       const sev = valueOrDash(ev.severity);
 
@@ -1095,6 +1180,7 @@ async function loadEvents(page = 1, { silent = false } = {}) {
         <td>${deviceLabel}</td>
         <td>${desc}</td>
         <td>${type}</td>
+        <td>${status}</td>
         <td style="font-weight:bold; color:${severityColor(sev)};">
           ${sev}
         </td>
@@ -1109,7 +1195,7 @@ async function loadEvents(page = 1, { silent = false } = {}) {
 
     console.error("Erro ao buscar eventos:", err?.message, err?.url, err?.body);
     tbody.innerHTML = `
-      <tr><td colspan="6" style="text-align:center; color:#f44336; padding:40px;">
+      <tr><td colspan="7" style="text-align:center; color:#f44336; padding:40px;">
         Erro ao carregar eventos
       </td></tr>
     `;
@@ -1189,10 +1275,11 @@ function renderPortfolioTable(plants) {
       <td class="metric-neutral">${Number(plant.rated_power_kw ?? 0).toFixed(1)} kWp</td>
       <td class="metric-active">${Number(plant.active_power_kw ?? 0).toFixed(1)} kW</td>
       <td class="metric-active">${Number(plant.energy_today_kwh ?? 0).toFixed(1)} kWh</td>
-      <td>${valueOrDash(plant.irradiance_wm2)} W/m²</td>
-      <td>${plant.inverter_availability_pct != null ? (plant.inverter_availability_pct * 100).toFixed(1) + "%" : "—"}</td>
-      <td>${plant.relay_availability_pct != null ? (plant.relay_availability_pct * 100).toFixed(1) + "%" : "—"}</td>
-      <td>${plant.performance_ratio != null ? Number(plant.performance_ratio).toFixed(1) + "%" : "—"}</td>
+      <td>${plant.irradiance_wm2 != null ? Number(plant.irradiance_wm2).toFixed(0) + " W/m²" : "—"}</td>
+      <td>${plant.inverter_availability_pct != null ? Number(plant.inverter_availability_pct).toFixed(1) + "%" : "—"}</td>
+      <td>${plant.relay_availability_pct != null ? Number(plant.relay_availability_pct).toFixed(1) + "%" : "—"}</td>
+      <td>${plant.pr_daily_pct != null ? Number(plant.pr_daily_pct).toFixed(1) + "%" : "—"}</td>
+      <td>${plant.pr_accumulated_pct != null ? Number(plant.pr_accumulated_pct).toFixed(1) + "%" : "—"}</td>
       <td style="text-align:center;">
         <button class="plant-link-btn" title="Abrir usina" data-plant-id="${plantId}">
           <i class="fa-solid fa-arrow-up-right-from-square"></i>
@@ -1745,6 +1832,41 @@ function resetDataStudioChartZoom() {
   }
 }
 
+function isMobileViewport() {
+  return window.innerWidth <= 768;
+}
+
+function clearDataStudioChartActiveState() {
+  if (!DATASTUDIO_CHART) return;
+
+  try {
+    DATASTUDIO_CHART.setActiveElements([]);
+    if (DATASTUDIO_CHART.tooltip && typeof DATASTUDIO_CHART.tooltip.setActiveElements === "function") {
+      DATASTUDIO_CHART.tooltip.setActiveElements([], { x: 0, y: 0 });
+    }
+    DATASTUDIO_CHART.update("none");
+  } catch (err) {
+    console.warn("[DataStudio] erro ao limpar seleção do gráfico:", err);
+  }
+}
+
+function wireDataStudioChartOutsideTapOnce() {
+  if (window.__dsOutsideTapWired) return;
+  window.__dsOutsideTapWired = true;
+
+  const clearIfOutside = (event) => {
+    if (!DATASTUDIO_CHART) return;
+    const { chartCanvas } = getDataStudioUIElements();
+    if (!chartCanvas) return;
+    if (!chartCanvas.contains(event.target)) {
+      clearDataStudioChartActiveState();
+    }
+  };
+
+  document.addEventListener("touchstart", clearIfOutside, { passive: true });
+  document.addEventListener("click", clearIfOutside);
+}
+
 function openDataStudioCatalogInline({ resetFilters = false } = {}) {
   const { plantSelect, startDateInput, endDateInput } = getDataStudioUIElements();
 
@@ -2013,6 +2135,8 @@ function renderDataStudioChart(seriesPayload) {
     });
   }
 
+  const mobile = isMobileViewport();
+
   DATASTUDIO_CHART = new Chart(chartCanvas.getContext("2d"), {
     type: "line",
     data: { labels, datasets },
@@ -2020,29 +2144,36 @@ function renderDataStudioChart(seriesPayload) {
       responsive: true,
       maintainAspectRatio: false,
       interaction: {
-        mode: "index",
+        mode: mobile ? "nearest" : "index",
         intersect: false,
         axis: "x"
       },
       hover: {
-        mode: "index",
+        mode: mobile ? "nearest" : "index",
         intersect: false
       },
       elements: {
         point: {
           radius: 0,
-          hoverRadius: 6,
-          hitRadius: 16
+          hoverRadius: mobile ? 8 : 6,
+          hitRadius: mobile ? 24 : 16
         },
         line: {
           borderWidth: 2
         }
       },
       plugins: {
-        legend: { labels: { color: "#dbe7ef" } },
+        legend: {
+          labels: {
+            color: "#dbe7ef",
+            boxWidth: 12,
+            usePointStyle: true,
+            pointStyle: "line"
+          }
+        },
         tooltip: {
           enabled: true,
-          mode: "index",
+          mode: mobile ? "nearest" : "index",
           intersect: false,
           displayColors: true,
           backgroundColor: "rgba(6, 18, 14, 0.96)",
@@ -2353,6 +2484,8 @@ function wireDataStudioOnce() {
     }, 120);
   });
 
+  wireDataStudioChartOutsideTapOnce();
+
   syncDataStudioAggregationUI();
   updateSelectedTagsCounter();
   updateDataStudioExportButton();
@@ -2487,6 +2620,8 @@ async function refreshDashboard() {
   if (!dsViewVisible || dsNeedPopulate) {
     populateDataStudioPlantSelect(lastValidPlants);
   }
+
+  populateEventsPlantSelect(lastValidPlants);
 
   try {
     alarms = await fetchActiveAlarms();
