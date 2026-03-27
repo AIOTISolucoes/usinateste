@@ -2389,3 +2389,33 @@ tbody tr:hover td {
 .ds-zoom-btn--reset:hover {
   background: rgba(255,255,255,0.12);
 }
+
+.ds-chart-wrap canvas {
+  touch-action: pan-y;
+}
+
+@media (max-width: 768px) {
+  .ds-chart-wrap {
+    height: 520px;
+    min-height: 520px;
+  }
+
+  .ds-chart-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .ds-zoom-btn,
+  .ds-export-btn {
+    width: 42px;
+    height: 42px;
+  }
+}
+
+@media (max-width: 480px) {
+  .ds-chart-wrap {
+    height: 560px;
+    min-height: 560px;
+  }
+}
