@@ -211,7 +211,8 @@
                       <th>Irradiance (W/m²)</th>
                       <th>Inverter Availability (%)</th>
                       <th>Relays Availability (%)</th>
-                      <th>PR (%)</th>
+                      <th>PR Daily (%)</th>
+                      <th>PR Acc. (%)</th>
                       <th style="text-align:center;" title="Abrir usina"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></th>
                     </tr>
                   </thead>
@@ -251,28 +252,37 @@
           <div class="events-container-full">
             <div class="events-filters-bar">
               <div class="filter-group">
-                <label>Date</label>
-                <input id="eventsDateInput" type="date" />
+                <label>Início</label>
+                <input id="eventsStartDateTimeInput" type="datetime-local" step="1" />
               </div>
 
               <div class="filter-group">
-                <label>Start time</label>
-                <input id="eventsStartTimeInput" type="time" step="1" placeholder="--:--:--" />
+                <label>Fim</label>
+                <input id="eventsEndDateTimeInput" type="datetime-local" step="1" />
               </div>
 
               <div class="filter-group">
-                <label>End time</label>
-                <input id="eventsEndTimeInput" type="time" step="1" placeholder="--:--:--" />
+                <label>Usina</label>
+                <select id="eventsPlantSelect">
+                  <option value="all">Todas</option>
+                </select>
               </div>
 
               <div class="filter-group">
                 <label>Equipment</label>
-                <input id="eventsEquipmentInput" type="text" placeholder="Equipment" />
+                <select id="eventsEquipmentSelect">
+                  <option value="all">Todos</option>
+                </select>
               </div>
 
               <div class="filter-group">
-                <label>Point name</label>
-                <input id="eventsPointInput" type="text" placeholder="Point name" />
+                <label>Type</label>
+                <select id="eventsTypeSelect">
+                  <option value="all">All</option>
+                  <option value="alarm">Alarm</option>
+                  <option value="event">Event</option>
+                  <option value="status">Status</option>
+                </select>
               </div>
 
               <div class="filter-group">
@@ -281,12 +291,11 @@
               </div>
 
               <div class="filter-group">
-                <label>State</label>
-                <select id="eventsStateSelect">
+                <label>Status</label>
+                <select id="eventsStatusSelect">
                   <option value="all">All</option>
-                  <option value="alarm">Alarm</option>
-                  <option value="event">Event</option>
-                  <option value="status">Status</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
                 </select>
               </div>
 
@@ -311,10 +320,11 @@
                 <thead>
                   <tr>
                     <th>Timestamp</th>
-                    <th>Point</th>
+                    <th>Usina</th>
                     <th>Equipment</th>
                     <th>Description</th>
-                    <th>State</th>
+                    <th>Type</th>
+                    <th>Status</th>
                     <th>Severity</th>
                   </tr>
                 </thead>
