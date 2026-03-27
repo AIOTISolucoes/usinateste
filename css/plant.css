@@ -826,6 +826,7 @@ body::before{
   background: rgba(255,255,255,0.03);
   margin-bottom: 6px;
   border: 1px solid rgba(255,255,255,0.06);
+  position: relative;
   box-shadow:
     0 10px 22px rgba(0,0,0,0.35),
     inset 0 1px 0 rgba(255,255,255,0.05);
@@ -1068,6 +1069,71 @@ body::before{
 .string-card.fault{
   color: #ff5c5c;
   box-shadow: inset 0 0 0 1px rgba(255,92,92,0.4);
+}
+
+.string-card.string-alarm{
+  border-color: rgba(255,78,78,.65);
+  background: linear-gradient(180deg, rgba(118,16,16,.92), rgba(58,8,8,.9));
+  box-shadow:
+    inset 0 0 0 1px rgba(255,88,88,.24),
+    0 0 0 1px rgba(255,78,78,.2),
+    0 10px 24px rgba(0,0,0,.42),
+    0 0 18px rgba(255,78,78,.28),
+    0 0 36px rgba(255,78,78,.16);
+  animation: stringAlarmPulse 1.35s ease-in-out infinite;
+}
+
+.string-card.string-alarm strong{
+  color: #ffd4d4;
+  text-shadow: 0 0 12px rgba(255,120,120,.32);
+}
+
+.string-card.string-alarm::after{
+  content:"";
+  position:absolute;
+  inset:-2px;
+  border-radius:14px;
+  pointer-events:none;
+  background: radial-gradient(220px 80px at 50% 0%, rgba(255,110,110,.25), transparent 60%);
+}
+
+.string-alarm-badge{
+  position:absolute;
+  top:8px;
+  right:10px;
+  width:20px;
+  height:20px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  background:rgba(255,59,59,.14);
+  border:1px solid rgba(255,92,92,.5);
+  color:#ff5c5c;
+  box-shadow:0 0 12px rgba(255,92,92,.28);
+  animation: inverterStringAlarmBlink .9s ease-in-out infinite;
+  z-index:2;
+}
+
+.string-alarm-badge i{
+  font-size:11px;
+  line-height:1;
+}
+
+.inverter-row.has-string-alarm{
+  box-shadow:
+    0 12px 26px rgba(0,0,0,0.42),
+    inset 0 0 0 1px rgba(255,85,85,.12),
+    inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+@keyframes stringAlarmPulse{
+  0%,100%{ filter: saturate(1); }
+  50%{ filter: saturate(1.35) brightness(1.08); }
+}
+
+@keyframes inverterStringAlarmBlink{
+  0%,100%{ opacity:1; transform:scale(1); }
+  50%{ opacity:.45; transform:scale(.92); }
 }
 
 /* =========================================================
@@ -2176,23 +2242,23 @@ body.plant-enter #relaySection{
     linear-gradient(180deg, rgba(8,14,12,0.92), rgba(3,7,6,0.95));
 }
 
-.trackers-stage{
+.trackers-map{
   position:absolute;
   inset:0;
-  transform-origin:0 0;
-  cursor:grab;
+  background:#0b0f14;
+  border-radius:18px;
+  overflow:hidden;
 }
 
-.trackers-stage.is-panning{ cursor:grabbing; }
-
-.trackers-grid-layer{
-  position:relative;
-  width:1600px;
-  height:900px;
-  background-image:
-    linear-gradient(rgba(57,229,140,.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(57,229,140,.07) 1px, transparent 1px);
-  background-size:40px 40px;
+.trackers-map-fallback{
+  position:absolute;
+  inset:0;
+  display:grid;
+  place-items:center;
+  color:rgba(233,255,243,.72);
+  font-size:13px;
+  background:rgba(3,7,6,.72);
+  z-index: 350;
 }
 
 .tracker-node{
@@ -2204,6 +2270,26 @@ body.plant-enter #relaySection{
   background:#7a8791;
   box-shadow:0 0 8px rgba(0,0,0,0.35);
   transition:transform .14s ease, filter .14s ease;
+}
+
+.leaflet-container{
+  background: #07110c;
+}
+
+#trackersMap .leaflet-tile-pane{
+  filter:saturate(0.9) brightness(0.72) contrast(1.08);
+}
+
+#trackersMap .leaflet-control-container{
+  display:none;
+}
+
+.tracker-map-marker{
+  width:14px;
+  height:14px;
+  border-radius:50%;
+  border:1px solid rgba(255,255,255,.75);
+  box-shadow:0 0 10px rgba(0,0,0,.35);
 }
 
 .tracker-node:hover{
