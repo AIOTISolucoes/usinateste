@@ -188,6 +188,7 @@
     </div>
   </div>
 </section>
+      <div id="topSummarySpacer" class="top-summary-spacer" aria-hidden="true"></div>
 
 
       <section class="content" id="mainContent">
@@ -252,55 +253,42 @@
           <div class="events-container-full">
             <div class="events-filters-bar">
               <div class="filter-group">
-                <label>Início</label>
-                <input id="eventsStartDateTimeInput" type="datetime-local" step="1" />
+                <label>INÍCIO</label>
+                <input id="eventsStartDateTimeInput" type="datetime-local" />
               </div>
 
               <div class="filter-group">
-                <label>Fim</label>
-                <input id="eventsEndDateTimeInput" type="datetime-local" step="1" />
+                <label>FIM</label>
+                <input id="eventsEndDateTimeInput" type="datetime-local" />
               </div>
 
               <div class="filter-group">
-                <label>Usina</label>
-                <select id="eventsPlantSelect">
-                  <option value="all">Todas</option>
-                </select>
+                <label>USINA</label>
+                <select id="eventsPlantSelect"></select>
               </div>
 
               <div class="filter-group">
-                <label>Equipment</label>
-                <select id="eventsEquipmentSelect">
-                  <option value="all">Todos</option>
-                </select>
+                <label>EQUIPMENT</label>
+                <select id="eventsEquipmentSelect"></select>
               </div>
 
               <div class="filter-group">
-                <label>Type</label>
-                <select id="eventsTypeSelect">
-                  <option value="all">All</option>
-                  <option value="alarm">Alarm</option>
-                  <option value="event">Event</option>
-                  <option value="status">Status</option>
-                </select>
+                <label>TYPE</label>
+                <select id="eventsTypeSelect"></select>
               </div>
 
               <div class="filter-group">
-                <label>Description</label>
+                <label>DESCRIPTION</label>
                 <input id="eventsDescriptionInput" type="text" placeholder="Description" />
               </div>
 
               <div class="filter-group">
-                <label>Status</label>
-                <select id="eventsStatusSelect">
-                  <option value="all">All</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
+                <label>STATUS</label>
+                <select id="eventsStatusSelect"></select>
               </div>
 
               <div class="filter-group">
-                <label>Severity</label>
+                <label>SEVERITY</label>
                 <select id="eventsSeveritySelect">
                   <option value="all">All</option>
                   <option value="high">High</option>
@@ -330,7 +318,11 @@
                 </thead>
                 <tbody id="eventsTbody"></tbody>
               </table>
-              <div id="eventsPageLabel" style="padding:10px 2px; opacity:.7; font-size:12px;"></div>
+              <div style="display:flex; align-items:center; gap:8px; padding:10px 2px;">
+                <button id="eventsPrevBtn" type="button" class="btn-clear">◀</button>
+                <button id="eventsNextBtn" type="button" class="btn-clear">▶</button>
+                <span id="eventsPageLabel" style="opacity:.7; font-size:12px;"></span>
+              </div>
             </div>
           </div>
         </div>
@@ -390,6 +382,11 @@
                     <option value="discrete">Discreto</option>
                   </select>
 
+                  <select id="dsSourceSelect" class="ds-chip-select">
+                    <option value="all">Todas origens</option>
+                    <option value="historico">Histórico</option>
+                    <option value="consolidado">Consolidado</option>
+                  </select>
 
                   <select id="dsContextSelect" class="ds-chip-select">
                     <option value="all">Todos contextos</option>
@@ -400,17 +397,17 @@
                 <div id="dsContextInfo" class="ds-context-info hidden"></div>
 
                 <div class="ds-modal-table-wrap">
-                  <table class="ds-table">
+                  <table id="dsTagsTable" class="ds-table">
                     <thead>
                       <tr>
                         <th></th>
-                        <th>Pathname</th>
+                        <th>Contexto</th>
                         <th>Descrição</th>
                         <th>Origem</th>
                         <th>Tipo</th>
                         <th>Unidade</th>
-                        <th>Contexto</th>
-                        <th>Plant ID</th>
+                        <th>PLANT ID</th>
+                        <th>Pathname</th>
                       </tr>
                     </thead>
                     <tbody id="dsTagsTbody"></tbody>
